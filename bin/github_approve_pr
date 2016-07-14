@@ -1,0 +1,140 @@
+#!/site/perl/perl-5.10.1-1/bin/perl
+use warnings;
+use strict;
+use feature ':5.10';
+
+=pod
+
+=head1 NAME
+
+github_api - search GitHub repos
+
+
+=head1 SYNOPSIS
+
+    $ export MARCHEX_GITHUB_TOKEN=TOKEN
+    $ github_approve_pr marchex/tools-test 1
+
+
+=head1 REQUIREMENTS
+
+=over 4
+
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.marchex.com/settings/tokens>).
+
+You can save the token in the environment variable C<$MARCHEX_GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+
+=back
+
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-h|--help>
+
+Prints brief help message and exits.
+
+=item B<-t|--token>
+
+Personal access token to use GitHub API.  Can use environment variable
+C<$MARCHEX_GITHUB_TOKEN> instead.
+
+=back
+
+=cut
+
+
+BEGIN {
+    use FindBin '$Bin';
+    use lib "$Bin/../lib/perl";
+}
+
+use Data::Dumper; $Data::Dumper::Sortkeys=1;
+use Pod::Usage;
+
+use Getopt::Long;
+use HTTP::Response;
+use JSON::XS qw(decode_json encode_json);
+use MIME::Base64;
+use URI::Escape;
+
+use Marchex::Client::GitHub;
+use Marchex::Color qw(color_str :colors);
+
+my $gh = init();
+
+my $last_sha;
+my $pr = "$gh->{repo}/pulls/$gh->{pr_num}";
+my $commits = $gh->{api}->command(GET => "/repos/$pr/commits");
+for my $commit (@$commits) {
+    print color_str("commit $commit->{sha}", YELLOW), "\n";
+    print "Author: $commit->{commit}{committer}{name} <$commit->{commit}{committer}{email}>\n";
+    print "Date: $commit->{commit}{author}{date}\n";
+    my $message = $commit->{commit}{message};
+    $message =~ s/^/    /;
+    $message =~ s/\n/\n    /g;
+    $message =~ s/\s+$//g;
+    print "\n$message\n\n";
+
+    $last_sha = $commit->{sha};
+}
+
+
+local $|;
+print color_str("Approve pull request", BLUE), ' ',
+      color_str($pr, RED), color_str('?', BLUE), ' [Yes/No/Skip] ';
+chomp(my $ans = <>);
+if ($ans =~ /^[yY]/) {
+    print "Approved!\n\n";
+    status($last_sha, 'success');
+}
+elsif ($ans =~ /^[nN]/) {
+    print "Denied!\n\n";
+    status($last_sha, 'failure');
+}
+else {
+    status($last_sha, 'pending');
+}
+
+exit;
+
+sub status {
+    my($sha, $state) = @_;
+    my %args = (
+        state       => $state || 'error',
+        description => "Reviewed-by: $gh->{user}",
+        context     => $gh->{context}
+    );
+    $args{target_url} = $gh->{target_url} if $gh->{target_url};
+    $gh->{api}->command(POST => "/repos/$gh->{repo}/statuses/$sha", \%args);
+}
+
+sub init {
+    my %opts;
+
+    Getopt::Long::Configure('bundling');
+    GetOptions(
+        'h|help'                => sub { pod2usage(-verbose => 2) },
+        't|token=s'             => \$opts{token},
+        'u|target_url=s'        => \$opts{target_url},
+        'c|context=s'           => \$opts{context},
+    ) or pod2usage(-verbose => 1);
+
+    $opts{token} //= $ENV{MARCHEX_GITHUB_TOKEN};
+
+    pod2usage(-verbose => 1, -message => "no personal token provided\n")
+        unless $opts{token};
+
+    $opts{api} = Marchex::Client::GitHub->new(
+        org     => $opts{org},
+        token   => $opts{token}
+    );
+
+    (@opts{qw(repo pr_num user)}) = @ARGV;
+    $opts{user}         //= $ENV{USER};
+    $opts{context}      //= 'reviewed';
+    @ARGV = ();
+
+    return(\%opts);
+}

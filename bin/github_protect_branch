@@ -1,0 +1,239 @@
+#!/site/perl/perl-5.10.1-1/bin/perl
+use warnings;
+use strict;
+use feature ':5.10';
+
+=pod
+
+=head1 NAME
+
+github_protect_branch - Set up protected branch rules on an existing repo
+
+=head1 SYNOPSIS
+
+    $ export GITHUB_TOKEN=TOKEN
+    $ github_protect_branch [-t token] [-o org] -r repo_name [-u user] [-s status_check] [-v]
+
+    # EXAMPLES
+
+    # Set up branch protection so that only commits with status_checks 'ci/unit' and 'ci/functional' can be pushed/merged to master
+    $ export GITHUB_TOKEN=TOKEN
+    $ github_protect_branch -o my_org -r my_repo -s 'ci/unit' -s 'ci/functional'
+
+    # Set up branch protection so that only 'tflint' and 'cnandor' can push/merge to master
+    $ export GITHUB_TOKEN=TOKEN
+    $ github_protect_branch -o my_org -r my_repo -u tflint -u cnandor
+
+=head1 DESCRIPTION
+
+Given a repo name and a list of statuses and/or users, sets up branch protection for the master branch of that repo.
+
+=head1 REQUIREMENTS
+
+=over 4
+
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.marchex.com/settings/tokens>).
+
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+
+=item * Only works on repos that already have at least one commit on the master branch.
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-h|--help>
+
+Prints brief help message and exits.
+
+=item B<-t|--token>
+
+Personal access token to use GitHub API.  Can use environment variable
+C<$GITHUB_TOKEN> instead.
+
+=item B<-o|--org>
+
+Github organization in whicht the repo is located, default is I<marchex>.
+
+=item B<-u|--user>
+
+Restrict pushing/merging to master to this user.
+
+=over 4
+
+=item * B<Replaces> existing users with user(s) supplied to the command
+
+=item * Specify multiple -u options to specify multiple users
+
+=back
+
+=item B<-s|--status_check>
+
+Disallow pushing/merging to master unless the status_check(s) are present on the commit.
+
+=over 4
+
+=item * B<Replaces> existing status checks with check(s) supplied to the command
+
+=item * Specify multiple -s options to specify multiple status checks
+
+=item * If the status check doesn't exist, it will be created
+
+=back
+
+=item B<-v|--verbose>
+
+Outputs the HTTP request and response to STDERR (so that you can get the
+output and still process the content with C<jq>).  One C<-v> shows just
+the headers, while two shows the content as well.
+
+=back
+
+=cut
+
+BEGIN {
+    use FindBin '$Bin';
+    use lib "$Bin/../lib/perl";
+}
+
+use Data::Dumper; $Data::Dumper::Sortkeys=1;
+use Pod::Usage;
+use Getopt::Long;
+use WWW::Mechanize;
+
+use Marchex::Client::GitHub;
+
+my $gh = init();
+
+protect_branch();
+setup_authorized_users();
+
+sub protect_branch {
+    return unless $gh->{status_check};
+
+    # Set up $patch_data to enable protection
+    my $patch_data = {
+            protection  => {
+                enabled => JSON::XS::true(),
+            }
+        };
+
+    # If requested, set status check enforcement
+    if ($gh->{status_check}) {
+        $patch_data->{protection}{required_status_checks} = {
+            # For now, make the rule apply to everyone
+            enforcement_level   => 'everyone',
+            contexts            => $gh->{status_check}
+        };
+    }
+
+    eval { $gh->{api}->command(
+            PATCH => "/repos/$gh->{org}/$gh->{repo}/branches/master",
+            $patch_data,
+            { accept_type => 'application/vnd.github.loki-preview+json' }
+    ) };
+    die "Cannot set branch protection for $gh->{repo}: $@; exiting" if $@;
+
+    print "Added status_check(s) " . join(", ", @{$gh->{status_check}}) , " requirements to master on $gh->{repo}.\n";
+}
+
+sub get_user_id_from_name {
+    my $username = shift;
+    my $user = eval { $gh->{api}->command( GET => "/users/$username" ) };
+    die "Cannot get user ID for $user: $@; exiting" if $@;
+
+    return $user->{id};
+}
+
+sub setup_authorized_users {
+    # This part is not supported through the API so we need to do it through a browser
+    return unless $gh->{user};
+    my @user_ids = map{ get_user_id_from_name($_) } @{$gh->{user}};
+
+    # Login to set up session cookies
+    my $mech = WWW::Mechanize->new;
+    $mech->get( 'https://github.marchex.com/login' );
+    $mech->submit_form( fields => {
+        login => $ENV{USER},
+        password => $gh->{ldap_pass}
+    });
+
+    # Find the "Restrict who can push to this branch" form
+    $mech->get( "https://github.marchex.com/$gh->{org}/$gh->{repo}/settings/branches/master" );
+    my @forms = $mech->forms;
+    my $form_number = 0;
+    my $form;
+    for my $i (0 .. $#forms) {
+        if ($forms[$i]->action =~ m|/settings/branches/master$|) {
+            $mech->form_number(1 + $i);
+            $form = $forms[$i];
+            last;
+        }
+    }
+
+    # Remove any existing users in the form
+    @{$form->{inputs}} = grep { !( ref eq 'HTML::Form::TextInput' && $_->{name} eq 'user_ids[]') } @{$form->{inputs}};
+
+    # Add requested users - TODO find a natively supported mechanize method for this
+    for my $u (@user_ids) {
+        my $user_form_entry = bless( {
+            '/' => '/',
+            'class' => 'form-control',
+            'name' => 'user_ids[]',
+            'readonly' => 1,
+            'type' => 'hidden',
+            'value' => $u,
+            'value_name' => ''
+            }, 'HTML::Form::TextInput', );
+
+        push @{$form->{inputs}}, $user_form_entry;
+    }
+
+    # Submit the now-populated form
+    $mech->submit_form( fields => { 'authorized_users_or_teams' => 'on' } );
+
+    die "Restricting users failed for $gh->{user}: $@; exiting" if $@;
+
+    print "Granted " . join(", ", @{$gh->{user}}) , " access to push to master on $gh->{repo}.\n";
+}
+
+sub init {
+    my %opts;
+
+    Getopt::Long::Configure('bundling');
+    GetOptions(
+        'h|help'                => sub { pod2usage(-verbose => 2) },
+        't|token=s'             => \$opts{token},
+        'o|org=s'               => \$opts{org},
+        'r|repo=s'              => \$opts{repo},
+        'u|user=s@'             => \$opts{user},
+        's|status_check=s@'     => \$opts{status_check},
+        'v|verbose+'            => \$opts{verbose}
+    ) or pod2usage(-verbose => 1);
+
+    $opts{token} //= $ENV{GITHUB_TOKEN};
+
+    pod2usage(-verbose => 1, -message => "no repo name provided\n")
+        unless $opts{repo};
+
+    pod2usage(-verbose => 1, -message => "no personal token provided\n")
+        unless $opts{token};
+
+    pod2usage(-verbose => 1, -message => "nothing to do - please specify one or both of user or status_checks\n")
+        unless $opts{user} || $opts{status_check};
+
+    $opts{org} //= 'marchex';
+
+    $opts{api} = Marchex::Client::GitHub->new(
+        verbose => $opts{verbose},
+        org     => $opts{org},
+        token   => $opts{token}
+    );
+
+    $opts{api}->_prompt_for_credentials;
+    $opts{ldap_pass} = $opts{api}->{pass};
+
+    return(\%opts);
+}

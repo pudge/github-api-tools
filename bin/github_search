@@ -1,0 +1,296 @@
+#!/site/perl/perl-5.10.1-1/bin/perl
+use warnings;
+use strict;
+use feature ':5.10';
+
+=pod
+
+=head1 NAME
+
+github_search - search GitHub code
+
+
+=head1 SYNOPSIS
+
+    $ export MARCHEX_GITHUB_TOKEN=TOKEN
+
+    # search all repos
+    $ github_search xyzzy
+    
+
+=head1 DESCRIPTION
+
+See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for more information about searching code in GitHub.
+
+=over 4
+
+=item * Searches are case-insensitive
+
+=item * If there are more than 30 results and you're using an interactive shell, the program will ask you if you want to see the next page of results.  Otherwise, you will get only the first 30 results.
+
+=item * If the contents of the file do not contain the search term, only the path to the file is given in the output, without a diff.
+
+=item * This currently does not support other searches in GitHub, only code searches.
+
+=back
+
+
+=head1 REQUIREMENTS
+
+=over 4
+
+=item * Create personal access token on GitHub with scope "repo" (https://github.marchex.com/settings/tokens)
+
+You can save the token in the environment variable MARCHEX_GITHUB_TOKEN, or pass it in the command line.
+
+=back
+
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-h|--help>
+
+Prints brief help message and exits.
+
+=item B<-t|--token>
+
+Personal access token to use GitHub API.  Can use environment variable
+C<$MARCHEX_GITHUB_TOKEN> instead.
+
+=item B<-o|--org>
+
+If specified, restrict searches to this organization.
+
+=item B<-O|--open_url>
+
+Open the GitHub URL using the specified command (default: C<$BROWSER> or C<open_url>, can be overridden here).
+
+=item B<-P|--print_url>
+
+Open the GitHub URL to the command line.
+
+=item B<-u|--url>
+
+Print URL for each search result.
+
+=item B<-l|--list_only>
+
+Only list files with differences, do not print the differences.
+
+=item B<-T|--team>
+
+Restrict search to repos from specified team.  Can be set multiple times,
+e.g., C<-T tools -T mcm>.
+
+=item B<-f|--filter>
+
+Arbitrary search filters.  Can be set multiple times, e.g.,
+C<cacert -f extension:pem -f in:path>, or combined, e.g.,
+C<cacert -f 'extension:pem in:path'>.
+L<https://help.github.com/enterprise/2.5/user/articles/searching-code/>
+for more information.
+
+=item B<-i|--indexed_sort>
+
+Search by most recently indexed, instead of by "best match."
+
+=item B<-v|--verbose>
+
+Outputs the HTTP request and response to STDERR (so that you can get the
+output and still process the content with C<jq>).  One C<-v> shows just
+the headers, while two shows the content as well.
+
+=back
+
+=cut
+
+
+BEGIN {
+    use FindBin '$Bin';
+    use lib "$Bin/../lib/perl";
+}
+
+use Data::Dumper; $Data::Dumper::Sortkeys=1;
+use Pod::Usage;
+
+use File::Temp 'tempfile';
+use Getopt::Long;
+use HTTP::Response;
+use JSON::XS qw(decode_json encode_json);
+use MIME::Base64;
+use URI::Escape;
+
+use Marchex::Client::GitHub;
+use Marchex::Color qw(color_str :colors);
+use Marchex::OpenURL 'open_url_with';
+
+my $gh = init();
+set_teams();
+my $query = prep_query();
+search($query);
+
+
+sub set_teams {
+    return unless $gh->{teams} && @{$gh->{teams}};
+
+    my @team_ids;
+    my $content = $gh->{api}->command(GET => "/orgs/$gh->{org}/teams");
+    for my $team (@$content) {
+        push @team_ids, $team->{id} if grep { lc($team->{slug}) eq lc($_) } @{$gh->{teams}};
+    }
+
+    my %repos;
+    for my $team_id (@team_ids) {
+        my $content = $gh->{api}->command(GET => "/teams/$team_id/repos");
+        for my $repo (@$content) {
+            $repos{$repo->{name}} = 1;
+        }
+    }
+
+    for my $repo (sort keys %repos) {
+        push @{$gh->{filter}}, "repo:$gh->{org}/$repo";
+    }
+}
+
+sub prep_query {
+    my $search_string = $gh->{term} || '';
+    $search_string .= " user:$gh->{org}" if $gh->{set_org};
+
+    for my $filter (sort @{$gh->{filter}}) {
+        $search_string .= " $filter";
+    }
+    $search_string =~ s/^ //;
+
+    return $search_string;
+}
+
+sub query_url {
+    my($query) = @_;
+    my $sort = $gh->{indexed_sort} ? '&s=indexed&o=desc' : '';
+    return sprintf("https://%s/search?q=%s&ref=searchresults&type=Code%s", $gh->{api}{host}, uri_escape($query), $sort);
+}
+
+sub search {
+    my($query, $link) = @_;
+
+    my $query_url = query_url($query);
+    if (defined $gh->{open_url}) {
+        open_url_with($gh->{open_url}, $query_url);
+        exit;
+    }
+    elsif ($gh->{print_url}) {
+        print $query_url . "\n";
+        exit;
+    }
+
+    my $params = { 'q' => $query };
+    $params->{'sort'} = 'indexed' if $gh->{indexed_sort};
+
+    my $content = $gh->{api}->command(
+        GET => '/search/code',
+        $params,
+        { no_follow => 1, link => $link }
+    );
+    my $links = $gh->{api}{links};
+
+    for my $item (@{$content->{items}}) {
+        my $repo = "$item->{repository}{owner}{login}/$item->{repository}{name}";
+
+        print color_str("# $repo:$item->{path}", BLUE), "\n"; 
+        my $content = $gh->{api}->command(GET => "/repos/$repo/contents/$item->{path}");
+        my $data = decode_base64($content->{content});
+
+        if ($gh->{url}) {
+            # handle line numbers for the URL by calling to grep and finding
+            # the line numbers before passing again to grep for display
+            # purposes
+            my $line = '';
+            if ($gh->{term}) {
+                my($fh, $filename) = tempfile();
+                print $fh $data;
+                chomp(my $grep = `grep -i -n '$gh->{term}' $filename`);
+                my($l1, $l2, $last) = (0, 0, 0);
+                while ($grep =~ /^(\d+):/mg) {
+                    my $num = $1;
+                    if (!$l1) {
+                        $l1 = $num;
+                        $line = "#L$l1";
+                    }
+                    # first two lines within two lines of each other
+                    # so we can pass in a range
+                    elsif ($l1 && $num <= ($last+2)) {
+                        $l2 = $num;
+                    }
+                    else {
+                        last;
+                    }
+                    $last = $num;
+                }
+
+                if ($l2) {
+                    $line .= "-L$l2";
+                }
+            }
+            my $url = $item->{html_url} . $line;
+            print color_str("# $url", MAGENTA), "\n"; 
+        }
+
+        if ($gh->{term} && !$gh->{list_only}) {
+            # -H --label=$item->{path} 
+            my $color = (-t STDIN && -t STDOUT) ? 'always' : 'never';
+            open my $grep, "|grep -C 1 --color=$color -i -n '$gh->{term}'" or die "cannot grep: $!";
+            print $grep $data;
+            close $grep;
+            print "\n";
+        }
+    }
+
+    # skip if non-interactive
+    if (-t STDIN && -t STDOUT && $links && $links->{next}) {
+        local $| = 1;
+        print color_str("Next page of results?", CYAN), " [yn] ";
+        chomp(my $ans = <>);
+        if ($ans =~ /y/) {
+            search($query, $links->{next});
+        }
+    }
+}
+
+sub init {
+    my %opts;
+
+    Getopt::Long::Configure('bundling');
+    GetOptions(
+        'h|help'                => sub { pod2usage(-verbose => 2) },
+        't|token=s'             => \$opts{token},
+        'o|org=s'               => \$opts{org},
+        'u|url'                 => \$opts{url},
+        'O|open_url:s'          => \$opts{open_url},
+        'P|print_url'           => \$opts{print_url},
+        'l|list_only'           => \$opts{list_only},
+        'T|team=s'              => \@{$opts{teams}},
+        'f|filter=s'            => \@{$opts{filter}},
+        'i|indexed_sort'        => \$opts{indexed_sort},
+        'v|verbose+'            => \$opts{verbose}
+    ) or pod2usage(-verbose => 1);
+
+    $opts{token} //= $ENV{MARCHEX_GITHUB_TOKEN};
+
+    pod2usage(-verbose => 1, -message => "no personal token provided\n")
+        unless $opts{token};
+
+    $opts{set_org} = 1 if $opts{org};
+    $opts{org} //= 'marchex';
+
+    $opts{api} = Marchex::Client::GitHub->new(
+        verbose => $opts{verbose},
+        token   => $opts{token}
+    );
+
+    $opts{term} = shift @ARGV;
+    @ARGV = ();
+
+    return(\%opts);
+}

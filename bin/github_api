@@ -1,0 +1,173 @@
+#!/site/perl/perl-5.10.1-1/bin/perl
+use warnings;
+use strict;
+use feature ':5.10';
+
+=pod
+
+=head1 NAME
+
+github_api - use the GitHub API for GitHub Enterprise (may or may not work with github.com - not tested)
+
+
+=head1 SYNOPSIS
+
+    $ export GITHUB_TOKEN=TOKEN
+    $ export GITHUB_HOST=my.github.com
+    $ github_api [-t token] [-m http_method] [-a accept_type] \
+      ([-d post_key=value [-d ...]] | [-j JSON]) [-v] /api/method
+
+
+=head1 DESCRIPTION
+
+You must use the correct version of the documentation for our GitHub Enterprise version,
+which is currently <https://developer.github.com/enterprise/2.5/v3/>.
+
+
+=over 4
+
+=item * Result JSON is printed to STDOUT
+
+=back
+
+
+=head1 REQUIREMENTS
+
+=over 4
+
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://your-github-instance.com/settings/tokens>).
+
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+
+=back
+
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-h|--help>
+
+Prints brief help message and exits.
+
+=item B<-t|--token>
+
+Personal access token to use GitHub API.  Can use environment variable
+C<$GITHUB_TOKEN> instead.
+
+=item B<-H|--Host>
+
+Hostname of your GitHub Enterprise host e.g. github.myorg.com
+C<$GITHUB_HOST> instead.
+
+=item B<-m|--method>
+
+HTTP method to use, default is I<GET>.
+
+=item B<-a|--accept_type>
+
+Optional accept-type, default is I<application/vnd.github.v3+json>.
+
+=item B<-d|--data>
+
+Parameter data, formatted as C<key=value>.
+
+=item B<-j|--json>
+
+Parameter data in a JSON string.  If no string provided, pass in via STDIN.
+Overrides C<-d>.  Implies C<-m POST>, unless otherwise specified.
+
+=item B<-F|--no_follow>
+
+There's pagination in some API calls.  You can see it in the C<Link> header.  If
+the API call returns a list and has a C<Link> header, the program will attempt to
+follow the links and return all the data, unless C<-F> is set.
+
+=item B<-v|--verbose>
+
+Outputs the HTTP request and response to STDERR (so that you can get the
+output and still process the content with C<jq>).  One C<-v> shows just
+the headers, while two shows the content as well.
+
+=back
+
+=cut
+
+
+BEGIN {
+    use FindBin '$Bin';
+    use lib "$Bin/../lib/perl";
+}
+
+use Data::Dumper; $Data::Dumper::Sortkeys=1;
+use Pod::Usage;
+use Getopt::Long;
+
+use Marchex::Client::GitHub;
+use Marchex::Color qw(color_str :colors);
+
+my $gh = init();
+my %options;
+$options{accept_type}  = $gh->{accept_type} if $gh->{accept_type};
+$options{no_follow} = $gh->{no_follow};
+
+print $gh->{api}->pretty(
+    $gh->{api}->command($gh->{http_method} => $gh->{api_method}, $gh->{params}, \%options)
+), "\n";
+exit;
+
+sub init {
+    my %opts;
+
+    Getopt::Long::Configure('bundling');
+    GetOptions(
+        'h|help'                => sub { pod2usage(-verbose => 2) },
+        't|token=s'             => \$opts{token},
+        'H|host=s'              => \$opts{host},
+        'o|org=s'               => \$opts{org},
+        'm|method=s'            => \$opts{http_method},
+        'a|accept_type=s'       => \$opts{accept_type},
+        'd|data=s@'             => \$opts{data},
+        'j|json:s'              => \$opts{json},
+        'F|no_follow'           => \$opts{no_follow},
+        'v|verbose+'            => \$opts{verbose}
+    ) or pod2usage(-verbose => 1);
+
+    if (defined $opts{json}) {
+        $opts{http_method} ||= 'POST';
+        if ($opts{json}) {
+            $opts{params} = $opts{json};
+        }
+        else {
+            $opts{params} = join '', <STDIN>;
+        }
+    }
+    elsif ($opts{data}) {
+        $opts{params} = +{ map { split /=/, $_, 2 } @{$opts{data} || []} };
+    }
+
+    $opts{http_method} ||= 'GET';
+
+    $opts{host} //= $ENV{GITHUB_HOST};
+    pod2usage(-verbose => 1, -message => "no github host provided\n")
+        unless $opts{host};
+
+    $opts{token} //= $ENV{GITHUB_TOKEN};
+
+    pod2usage(-verbose => 1, -message => "no personal token provided\n")
+        unless $opts{token};
+
+    $opts{api} = Marchex::Client::GitHub->new(
+        verbose => $opts{verbose},
+        org     => $opts{org},
+        token   => $opts{token}
+    );
+
+    $opts{api_method} = shift @ARGV;
+    @ARGV = ();
+
+    pod2usage(-verbose => 1, -message => "No method specified\n")
+        unless $opts{api_method};
+
+    return(\%opts);
+}
