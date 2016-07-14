@@ -1,4 +1,4 @@
-#!/site/perl/perl-5.10.1-1/bin/perl
+#!/usr/bin/env perl
 use warnings;
 use strict;
 use feature ':5.10';
