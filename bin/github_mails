@@ -1,4 +1,4 @@
-#!/usr/bin/perl -s
+#!/usr/bin/env perl
 use warnings;
 use strict;
 use feature ':5.10';
@@ -7,21 +7,21 @@ use feature ':5.10';
 # note that the report is cached, so it's not 100% reliable.  you might miss
 # a new user, or a newly suspended user, etc.
 
-# only usable by a GitHub admin.  uses $MARCHEX_GITHUB_TOKEN environment
+# only usable by a GitHub admin.  uses $GITHUB_TOKEN environment
 # variable, $USER, and curl.
 
 # use -O to try to pass the mailto: to open_url
 
 our $O;
 
-die '$MARCHEX_GITHUB_TOKEN is not set in your environment' unless $ENV{MARCHEX_GITHUB_TOKEN};
+die '$GITHUB_TOKEN is not set in your environment' unless $ENV{GITHUB_TOKEN};
+die '$GITHUB_HOST is not set in your environment' unless $ENV{GITHUB_HOST};
 
-my $curl = qq{curl -s -L -u $ENV{USER}:$ENV{MARCHEX_GITHUB_TOKEN}};
-my $url  = q{https://github.marchex.com/stafftools/reports};
+my $curl = qq{curl -s -L -u $ENV{USER}:$ENV{GITHUB_TOKEN}};
+my $url  = q{https://$GITHUB_HOST/stafftools/reports};
 
-# email is header row, chef-delivery and tools-automation are app users
-# beveryteen is a test user
-my $skip = q{egrep -v ',email,|chef-delivery|tools-automation|beveryteen'};
+# email is header row, chef-delivery is an app user
+my $skip = q{egrep -v ',email,|chef-delivery'};
 my $sort = q{sort -t, -k3};
 
 my $users = fetch("$url/all_users.csv", [$skip, $sort]);
@@ -35,7 +35,7 @@ for my $user (@$users) {
 
 if ($mailto) {
     $mailto =~ s/,$//;
-    $mailto = 'mailto:tools-team@marchex.com?bcc=' . $mailto;
+    $mailto = 'mailto:' . $mailto;
     if ($O) {
         system('open_url', $mailto);
     }

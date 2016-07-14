@@ -7,22 +7,23 @@ use feature ':5.10';
 
 =head1 NAME
 
-github_api - search GitHub repos
+github_approve_pr - approve a pull request from the command line
 
 
 =head1 SYNOPSIS
 
-    $ export MARCHEX_GITHUB_TOKEN=TOKEN
-    $ github_approve_pr marchex/tools-test 1
+    $ export GITHUB_TOKEN=TOKEN
+    $ export GITHUB_HOST=my.github.com
+    $ github_approve_pr my_org/my_repo 1
 
 
 =head1 REQUIREMENTS
 
 =over 4
 
-=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.marchex.com/settings/tokens>).
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://my-github-host.com/settings/tokens>).
 
-You can save the token in the environment variable C<$MARCHEX_GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
 
 =back
 
@@ -38,7 +39,12 @@ Prints brief help message and exits.
 =item B<-t|--token>
 
 Personal access token to use GitHub API.  Can use environment variable
-C<$MARCHEX_GITHUB_TOKEN> instead.
+C<$GITHUB_TOKEN> instead.
+
+=item B<-H|--Host>
+
+Hostname of your GitHub Enterprise host e.g. github.myorg.com
+C<$GITHUB_HOST> instead.
 
 =back
 
@@ -117,11 +123,16 @@ sub init {
     GetOptions(
         'h|help'                => sub { pod2usage(-verbose => 2) },
         't|token=s'             => \$opts{token},
+        'H|Host=s'              => \$opts{host},
         'u|target_url=s'        => \$opts{target_url},
         'c|context=s'           => \$opts{context},
     ) or pod2usage(-verbose => 1);
 
-    $opts{token} //= $ENV{MARCHEX_GITHUB_TOKEN};
+    $opts{host} //= $ENV{GITHUB_HOST};
+    pod2usage(-verbose => 1, -message => "no github host provided\n")
+        unless $opts{host};
+
+    $opts{token} //= $ENV{GITHUB_TOKEN};
 
     pod2usage(-verbose => 1, -message => "no personal token provided\n")
         unless $opts{token};

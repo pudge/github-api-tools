@@ -1,4 +1,4 @@
-#!/site/perl/perl-5.10.1-1/bin/perl
+#!/usr/bin/env perl
 use warnings;
 use strict;
 use feature ':5.10';
@@ -12,7 +12,8 @@ github_search - search GitHub code
 
 =head1 SYNOPSIS
 
-    $ export MARCHEX_GITHUB_TOKEN=TOKEN
+    $ export GITHUB_TOKEN=TOKEN
+    $ export GITHUB_HOST=my.github.com
 
     # search all repos
     $ github_search xyzzy
@@ -39,9 +40,9 @@ See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for 
 
 =over 4
 
-=item * Create personal access token on GitHub with scope "repo" (https://github.marchex.com/settings/tokens)
+=item * Create personal access token on GitHub with scope "repo" (https://my-github-server.com/settings/tokens)
 
-You can save the token in the environment variable MARCHEX_GITHUB_TOKEN, or pass it in the command line.
+You can save the token in the environment variable GITHUB_TOKEN, or pass it in the command line.
 
 =back
 
@@ -57,7 +58,7 @@ Prints brief help message and exits.
 =item B<-t|--token>
 
 Personal access token to use GitHub API.  Can use environment variable
-C<$MARCHEX_GITHUB_TOKEN> instead.
+C<$GITHUB_TOKEN> instead.
 
 =item B<-o|--org>
 
@@ -265,6 +266,7 @@ sub init {
     GetOptions(
         'h|help'                => sub { pod2usage(-verbose => 2) },
         't|token=s'             => \$opts{token},
+        'H|host=s'              => \$opts{host},
         'o|org=s'               => \$opts{org},
         'u|url'                 => \$opts{url},
         'O|open_url:s'          => \$opts{open_url},
@@ -276,13 +278,17 @@ sub init {
         'v|verbose+'            => \$opts{verbose}
     ) or pod2usage(-verbose => 1);
 
-    $opts{token} //= $ENV{MARCHEX_GITHUB_TOKEN};
+    $opts{host} //= $ENV{GITHUB_HOST};
+    pod2usage(-verbose => 1, -message => "no github host provided\n")
+        unless $opts{host};
+
+    $opts{token} //= $ENV{GITHUB_TOKEN};
 
     pod2usage(-verbose => 1, -message => "no personal token provided\n")
         unless $opts{token};
 
     $opts{set_org} = 1 if $opts{org};
-    $opts{org} //= 'marchex';
+    $opts{org} //= '';
 
     $opts{api} = Marchex::Client::GitHub->new(
         verbose => $opts{verbose},

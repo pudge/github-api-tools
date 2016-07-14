@@ -27,7 +27,7 @@ sub new {
     $self->{ua}       = LWP::UserAgent->new;
     $self->{token}  //= $ENV{GITHUB_TOKEN};
 
-    $self->{host} = $ENV{GITHUB_HOST};
+    $self->{host} //= $ENV{GITHUB_HOST};
     if ($self->{host} eq 'github.com') {
         $self->{uri}  = 'https://api.github.com';
         $self->{base} = $self->{uri};

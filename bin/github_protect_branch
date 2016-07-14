@@ -12,16 +12,19 @@ github_protect_branch - Set up protected branch rules on an existing repo
 =head1 SYNOPSIS
 
     $ export GITHUB_TOKEN=TOKEN
+    $ export GITHUB_HOST=my.github.com
     $ github_protect_branch [-t token] [-o org] -r repo_name [-u user] [-s status_check] [-v]
 
     # EXAMPLES
 
     # Set up branch protection so that only commits with status_checks 'ci/unit' and 'ci/functional' can be pushed/merged to master
     $ export GITHUB_TOKEN=TOKEN
+    $ export GITHUB_HOST=my.github.com
     $ github_protect_branch -o my_org -r my_repo -s 'ci/unit' -s 'ci/functional'
 
     # Set up branch protection so that only 'tflint' and 'cnandor' can push/merge to master
     $ export GITHUB_TOKEN=TOKEN
+    $ export GITHUB_HOST=my.github.com
     $ github_protect_branch -o my_org -r my_repo -u tflint -u cnandor
 
 =head1 DESCRIPTION
@@ -32,7 +35,7 @@ Given a repo name and a list of statuses and/or users, sets up branch protection
 
 =over 4
 
-=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.marchex.com/settings/tokens>).
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://my-github-server.com/settings/tokens>).
 
 You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
 
@@ -53,9 +56,14 @@ Prints brief help message and exits.
 Personal access token to use GitHub API.  Can use environment variable
 C<$GITHUB_TOKEN> instead.
 
+=item B<-H|--Host>
+
+Hostname of your GitHub Enterprise host e.g. github.myorg.com
+C<$GITHUB_HOST> instead.
+
 =item B<-o|--org>
 
-Github organization in whicht the repo is located, default is I<marchex>.
+Github organization in which the repo is located.
 
 =item B<-u|--user>
 
@@ -154,14 +162,14 @@ sub setup_authorized_users {
 
     # Login to set up session cookies
     my $mech = WWW::Mechanize->new;
-    $mech->get( 'https://github.marchex.com/login' );
+    $mech->get( "https://$gh->{host}/login" );
     $mech->submit_form( fields => {
         login => $ENV{USER},
         password => $gh->{ldap_pass}
     });
 
     # Find the "Restrict who can push to this branch" form
-    $mech->get( "https://github.marchex.com/$gh->{org}/$gh->{repo}/settings/branches/master" );
+    $mech->get( "https://$gh->{host}/$gh->{org}/$gh->{repo}/settings/branches/master" );
     my @forms = $mech->forms;
     my $form_number = 0;
     my $form;
@@ -206,6 +214,7 @@ sub init {
     GetOptions(
         'h|help'                => sub { pod2usage(-verbose => 2) },
         't|token=s'             => \$opts{token},
+        'H|host=s'              => \$opts{host},
         'o|org=s'               => \$opts{org},
         'r|repo=s'              => \$opts{repo},
         'u|user=s@'             => \$opts{user},
@@ -213,18 +222,22 @@ sub init {
         'v|verbose+'            => \$opts{verbose}
     ) or pod2usage(-verbose => 1);
 
-    $opts{token} //= $ENV{GITHUB_TOKEN};
+    pod2usage(-verbose => 1, -message => "no GitHub org provided\n")
+        unless $opts{org};
 
     pod2usage(-verbose => 1, -message => "no repo name provided\n")
         unless $opts{repo};
 
+    $opts{host} //= $ENV{GITHUB_HOST};
+    pod2usage(-verbose => 1, -message => "no GitHub host provided\n")
+        unless $opts{host};
+
+    $opts{token} //= $ENV{GITHUB_TOKEN};
     pod2usage(-verbose => 1, -message => "no personal token provided\n")
         unless $opts{token};
 
     pod2usage(-verbose => 1, -message => "nothing to do - please specify one or both of user or status_checks\n")
         unless $opts{user} || $opts{status_check};
-
-    $opts{org} //= 'marchex';
 
     $opts{api} = Marchex::Client::GitHub->new(
         verbose => $opts{verbose},
