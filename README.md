@@ -1,6 +1,10 @@
 # github_utils
 
-* we should probably write up a Makefile.PL
+## install
+* perl Makefile.PL
+* make
+* make test
+* make install
 
 ## apt packages
 If using ubuntu, probably can just install these packages:
