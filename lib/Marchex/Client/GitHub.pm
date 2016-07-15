@@ -3,6 +3,8 @@ package Marchex::Client::GitHub;
 use warnings;
 use strict;
 
+our $VERSION = v0.1.0;
+
 use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
