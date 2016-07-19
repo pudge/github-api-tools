@@ -3,9 +3,11 @@ package Marchex::OpenURL;
 use warnings;
 use strict;
 
+# this package attempts to open a URL in your local browser.
 # if OPEN_URL_SSH is true, and you're logged in via SSH, will attempt to
 # open a connection back to your host and open the URL there.  otherwise,
-# will attempt to open the URL locally.
+# will attempt to open the URL on the executing host (which may end
+# up opening it via X11).
 
 use base 'Exporter';
 our @EXPORT_OK = qw(open_url open_url_with);

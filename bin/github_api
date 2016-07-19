@@ -99,17 +99,14 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Pod::Usage;
-use Getopt::Long;
-
 use Marchex::Client::GitHub;
-use Marchex::Color qw(color_str :colors);
 
 my $gh = init();
 my %options;
-$options{accept_type}  = $gh->{accept_type} if $gh->{accept_type};
-$options{no_follow} = $gh->{no_follow};
+$options{accept_type}  = $gh->{accept_type}  if $gh->{accept_type};
+$options{content_type} = $gh->{content_type} if $gh->{content_type};
+$options{no_follow}    = $gh->{no_follow};
 
 print $gh->{api}->pretty(
     $gh->{api}->command($gh->{http_method} => $gh->{api_method}, $gh->{params}, \%options)
@@ -117,57 +114,36 @@ print $gh->{api}->pretty(
 exit;
 
 sub init {
-    my %opts;
-
-    Getopt::Long::Configure('bundling');
-    GetOptions(
-        'h|help'                => sub { pod2usage(-verbose => 2) },
-        't|token=s'             => \$opts{token},
-        'H|host=s'              => \$opts{host},
-        'o|org=s'               => \$opts{org},
-        'm|method=s'            => \$opts{http_method},
-        'a|accept_type=s'       => \$opts{accept_type},
-        'd|data=s@'             => \$opts{data},
-        'j|json:s'              => \$opts{json},
-        'F|no_follow'           => \$opts{no_follow},
-        'v|verbose+'            => \$opts{verbose}
-    ) or pod2usage(-verbose => 1);
-
-    if (defined $opts{json}) {
-        $opts{http_method} ||= 'POST';
-        if ($opts{json}) {
-            $opts{params} = $opts{json};
-        }
-        else {
-            $opts{params} = join '', <STDIN>;
-        }
-    }
-    elsif ($opts{data}) {
-        $opts{params} = +{ map { split /=/, $_, 2 } @{$opts{data} || []} };
-    }
-
-    $opts{http_method} ||= 'GET';
-
-    $opts{host} //= $ENV{GITHUB_HOST};
-    pod2usage(-verbose => 1, -message => "no github host provided\n")
-        unless $opts{host};
-
-    $opts{token} //= $ENV{GITHUB_TOKEN};
-
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
-
-    $opts{api} = Marchex::Client::GitHub->new(
-        verbose => $opts{verbose},
-        org     => $opts{org},
-        token   => $opts{token}
+    my $gh = Marchex::Client::GitHub->init(
+        'o|org=s'               => 'org',
+        'm|method=s'            => 'http_method',
+        'a|accept_type=s'       => 'accept_type',
+        'c|content_type=s'      => 'content_type',
+        'd|data=s@'             => 'data',
+        'j|json:s'              => 'json',
+        'F|no_follow'           => 'no_follow',
     );
 
-    $opts{api_method} = shift @ARGV;
+    if (defined $gh->{json}) {
+        $gh->{http_method} ||= 'POST';
+        if ($gh->{json}) {
+            $gh->{params} = $gh->{json};
+        }
+        else {
+            $gh->{params} = join '', <STDIN>;
+        }
+    }
+    elsif ($gh->{data}) {
+        $gh->{params} = +{ map { split /=/, $_, 2 } @{$gh->{data} || []} };
+    }
+
+    $gh->{http_method} ||= 'GET';
+
+    $gh->{api_method} = shift @ARGV;
     @ARGV = ();
 
     pod2usage(-verbose => 1, -message => "No method specified\n")
-        unless $opts{api_method};
+        unless $gh->{api_method};
 
-    return(\%opts);
+    return($gh);
 }

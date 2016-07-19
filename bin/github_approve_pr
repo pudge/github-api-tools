@@ -56,10 +56,7 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Pod::Usage;
-
-use Getopt::Long;
 use HTTP::Response;
 use JSON::XS qw(decode_json encode_json);
 use MIME::Base64;
@@ -117,35 +114,15 @@ sub status {
 }
 
 sub init {
-    my %opts;
-
-    Getopt::Long::Configure('bundling');
-    GetOptions(
-        'h|help'                => sub { pod2usage(-verbose => 2) },
-        't|token=s'             => \$opts{token},
-        'H|Host=s'              => \$opts{host},
-        'u|target_url=s'        => \$opts{target_url},
-        'c|context=s'           => \$opts{context},
-    ) or pod2usage(-verbose => 1);
-
-    $opts{host} //= $ENV{GITHUB_HOST};
-    pod2usage(-verbose => 1, -message => "no github host provided\n")
-        unless $opts{host};
-
-    $opts{token} //= $ENV{GITHUB_TOKEN};
-
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
-
-    $opts{api} = Marchex::Client::GitHub->new(
-        org     => $opts{org},
-        token   => $opts{token}
+    my $gh = Marchex::Client::GitHub->init(
+        'u|target_url=s'        => 'target_url',
+        'c|context=s'           => 'context',
     );
 
-    (@opts{qw(repo pr_num user)}) = @ARGV;
-    $opts{user}         //= $ENV{USER};
-    $opts{context}      //= 'reviewed';
+    (@{$gh}{qw(repo pr_num user)}) = @ARGV;
+    $gh->{user}         //= $ENV{USER};
+    $gh->{context}      //= 'reviewed';
     @ARGV = ();
 
-    return(\%opts);
+    return($gh);
 }

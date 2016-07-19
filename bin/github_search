@@ -113,11 +113,9 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Pod::Usage;
 
 use File::Temp 'tempfile';
-use Getopt::Long;
 use HTTP::Response;
 use JSON::XS qw(decode_json encode_json);
 use MIME::Base64;
@@ -260,43 +258,24 @@ sub search {
 }
 
 sub init {
-    my %opts;
-
-    Getopt::Long::Configure('bundling');
-    GetOptions(
-        'h|help'                => sub { pod2usage(-verbose => 2) },
-        't|token=s'             => \$opts{token},
-        'H|host=s'              => \$opts{host},
-        'o|org=s'               => \$opts{org},
-        'u|url'                 => \$opts{url},
-        'O|open_url:s'          => \$opts{open_url},
-        'P|print_url'           => \$opts{print_url},
-        'l|list_only'           => \$opts{list_only},
-        'T|team=s'              => \@{$opts{teams}},
-        'f|filter=s'            => \@{$opts{filter}},
-        'i|indexed_sort'        => \$opts{indexed_sort},
-        'v|verbose+'            => \$opts{verbose}
-    ) or pod2usage(-verbose => 1);
-
-    $opts{host} //= $ENV{GITHUB_HOST};
-    pod2usage(-verbose => 1, -message => "no github host provided\n")
-        unless $opts{host};
-
-    $opts{token} //= $ENV{GITHUB_TOKEN};
-
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
-
-    $opts{set_org} = 1 if $opts{org};
-    $opts{org} //= '';
-
-    $opts{api} = Marchex::Client::GitHub->new(
-        verbose => $opts{verbose},
-        token   => $opts{token}
+    my $gh = Marchex::Client::GitHub->init(
+        'o|org=s'               => 'org',
+        'u|url'                 => 'url',
+        'O|open_url:s'          => 'open_url',
+        'P|print_url'           => 'print_url',
+        'l|list_only'           => 'list_only',
+        'T|team=s@'             => 'teams',
+        'f|filter=s@'           => 'filter',
+        'i|indexed_sort'        => 'indexed_sort',
     );
 
-    $opts{term} = shift @ARGV;
+    $gh->{filter} //= [];
+
+    $gh->{set_org} = 1 if $gh->{org};
+    $gh->{org} //= '';
+
+    $gh->{term} = shift @ARGV;
     @ARGV = ();
 
-    return(\%opts);
+    return($gh);
 }

@@ -106,9 +106,7 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Pod::Usage;
-use Getopt::Long;
 use WWW::Mechanize;
 
 use Marchex::Client::GitHub;
@@ -165,7 +163,7 @@ sub setup_authorized_users {
     $mech->get( "https://$gh->{host}/login" );
     $mech->submit_form( fields => {
         login => $ENV{USER},
-        password => $gh->{ldap_pass}
+        password => $gh->{pass}
     });
 
     # Find the "Restrict who can push to this branch" form
@@ -208,45 +206,52 @@ sub setup_authorized_users {
 }
 
 sub init {
-    my %opts;
-
-    Getopt::Long::Configure('bundling');
-    GetOptions(
-        'h|help'                => sub { pod2usage(-verbose => 2) },
-        't|token=s'             => \$opts{token},
-        'H|host=s'              => \$opts{host},
-        'o|org=s'               => \$opts{org},
-        'r|repo=s'              => \$opts{repo},
-        'u|user=s@'             => \$opts{user},
-        's|status_check=s@'     => \$opts{status_check},
-        'v|verbose+'            => \$opts{verbose}
-    ) or pod2usage(-verbose => 1);
-
-    pod2usage(-verbose => 1, -message => "no GitHub org provided\n")
-        unless $opts{org};
-
-    pod2usage(-verbose => 1, -message => "no repo name provided\n")
-        unless $opts{repo};
-
-    $opts{host} //= $ENV{GITHUB_HOST};
-    pod2usage(-verbose => 1, -message => "no GitHub host provided\n")
-        unless $opts{host};
-
-    $opts{token} //= $ENV{GITHUB_TOKEN};
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
-
-    pod2usage(-verbose => 1, -message => "nothing to do - please specify one or both of user or status_checks\n")
-        unless $opts{user} || $opts{status_check};
-
-    $opts{api} = Marchex::Client::GitHub->new(
-        verbose => $opts{verbose},
-        org     => $opts{org},
-        token   => $opts{token}
+    my $gh = Marchex::Client::GitHub->init(
+        'o|org=s'               => 'org',
+        'r|repo=s'              => 'repo',
+        'u|user=s@'             => 'user',
+        's|status_check=s@'     => 'status_check',
     );
 
-    $opts{api}->_prompt_for_credentials;
-    $opts{ldap_pass} = $opts{api}->{pass};
+    pod2usage(-verbose => 1, -message => "no GitHub org provided\n")
+        unless $gh->{org};
 
-    return(\%opts);
+    pod2usage(-verbose => 1, -message => "no repo name provided\n")
+        unless $gh->{repo};
+
+    pod2usage(-verbose => 1, -message => "nothing to do - please specify one or both of user or status_checks\n")
+        unless $gh->{user} || $gh->{status_check};
+
+    prompt_for_credentials($gh->{api});
+    $gh->{pass} = $gh->{api}->{pass};
+
+    return($gh);
+}
+
+sub prompt_for_credentials {
+    my($self, $type, $prefix, $key) = @_;
+
+    $self->{user} //= $ENV{USER} // '';
+
+    my $username  = prompt_for("Username for [$self->{user}]");
+    $self->{user} = $username if $username;
+    $self->{pass} = prompt_for("Password", 1);
+}
+
+sub prompt_for {
+    my($prompt, $is_pass) = @_;
+    local $\;
+    local $| = 1;
+
+    # Disable displaying password when it's typed
+    qx(stty -echo) if $is_pass;
+    print "$prompt: ";
+
+    chomp(my $input = <STDIN>);
+    if ($is_pass) {
+        qx(stty echo);
+        print "\n";
+    }
+
+    return $input;
 }

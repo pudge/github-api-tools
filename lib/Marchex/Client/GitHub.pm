@@ -5,17 +5,13 @@ use strict;
 
 our $VERSION = v0.1.0;
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
 use LWP;
 use URI::Escape 'uri_escape';
-use Carp;
-use File::Temp 'tempfile';
-use WWW::Mechanize;
 
-use base 'Class::Accessor';
-__PACKAGE__->mk_ro_accessors(qw(mech));
+use Pod::Usage;
+use Getopt::Long;
 
 sub new {
     my($class, @opts) = @_;
@@ -24,12 +20,11 @@ sub new {
 
     my $self = bless \%opts, $class;
 
-    $self->_init_mech if $self->{mech};
-
     $self->{ua}       = LWP::UserAgent->new;
     $self->{token}  //= $ENV{GITHUB_TOKEN};
+    $self->{host}   //= $ENV{GITHUB_HOST};
+    $self->{user}   //= $ENV{USER};
 
-    $self->{host} //= $ENV{GITHUB_HOST};
     if ($self->{host} eq 'github.com') {
         $self->{uri}  = 'https://api.github.com';
         $self->{base} = $self->{uri};
@@ -50,7 +45,8 @@ sub command {
     delete $self->{links};
     $api =~ s/^\///;
 
-    my $url = "$self->{base}/$api";
+    # can optionally pass in a full URI instead of just the API method
+    my $url = $api =~ /^https?:\/\// ? $api :"$self->{base}/$api";
 
     if (!$options->{link} && $method eq 'GET' && $data) {
         my $query = ref $data ? (
@@ -65,7 +61,7 @@ sub command {
     if (!$options->{link} && $method ne 'GET' && $data) {
         my $content = ref $data ? encode_json($data) : $data;
         if ($content && length($content)) {
-            $req->content_type('application/json');
+            $req->content_type($options->{content_type} || 'application/json');
             $req->content($content);
         }
     }
@@ -92,11 +88,14 @@ sub command {
     }
 
     my $content = eval { decode_json($res->content) } // $res->content;
+
+    # if there's a next "Link" then automatically follow it ...
     if ($res->header('Link') && $content && ref($content)) {
         my %links = reverse split /\s*[,;]\s*/, $res->header('Link');
         if ($links{'rel="next"'}) {
             (my $link = $links{'rel="next"'}) =~ s/^<(.+?)>$/$1/;
             $self->{links}{next} = $link;
+            # ... unless no_follow is set
             if (!$options->{no_follow}) {
                 my $next = $self->command($method, $api, $data, { %$options, link => $link });
                 my $ref = ref $content;
@@ -113,36 +112,6 @@ sub command {
     return $content;
 }
 
-sub _prompt_for_credentials {
-    my($self, $type, $prefix, $key) = @_;
-
-    $self->{user} //= $ENV{USER} // '';
-    $self->{pass} //= '';
-
-    my $username = prompt_for("Username for [$self->{user}]");
-    $self->{user} = $username if $username;
-
-    $self->{pass} = prompt_for("Password", 1);
-}
-
-sub prompt_for {
-    my($prompt, $is_pass) = @_;
-    local $\;
-    local $| = 1;
-
-    # Disable displaying password when it's typed
-    qx(stty -echo) if $is_pass;
-    print "$prompt: ";
-
-    chomp(my $input = <STDIN>);
-    if ($is_pass) {
-        qx(stty echo);
-        print "\n";
-    }
-
-    return $input;
-}
-
 sub _prep_str {
     my($self, $str, $prefix) = @_;
     $str =~ s/\n\n.+?$//m if $self->{verbose} == 1;  # strip off content for low verbosity
@@ -155,6 +124,49 @@ sub pretty {
     my($self, $content) = @_;
     my $content_str = ref $content ? $content : eval { decode_json($content) } // $content;
     return eval { JSON::XS->new->pretty(1)->encode( $content_str ) } // $content_str;
+}
+
+# for initializing a new tool
+sub init {
+    my($class, %in_opts) = @_;
+    my %opts;
+
+    # fix up external options to point to reference in %opts
+    for my $o (keys %in_opts) {
+        $in_opts{$o} = \$opts{$in_opts{$o}}
+    }
+
+    Getopt::Long::Configure('bundling');
+    GetOptions(
+        'h|help'                => sub { pod2usage(-verbose => 2) },
+        't|token=s'             => \$opts{token},
+        'H|host=s'              => \$opts{host},
+        'V|version'             => \$opts{version},
+        'v|verbose+'            => \$opts{verbose},
+        %in_opts
+    ) or pod2usage(-verbose => 1);
+
+    if ($opts{version}) {
+        printf "Marchex-GitHub version v%vd\n", $Marchex::Client::GitHub::VERSION;
+        exit;
+    }
+
+    $opts{host} //= $ENV{GITHUB_HOST};
+    pod2usage(-verbose => 1, -message => "no GitHub host provided\n")
+        unless $opts{host};
+
+    $opts{token} //= $ENV{GITHUB_TOKEN};
+    pod2usage(-verbose => 1, -message => "no personal token provided\n")
+        unless $opts{token};
+
+    $opts{api} = Marchex::Client::GitHub->new(
+        host    => $opts{host},
+        token   => $opts{token},
+        verbose => $opts{verbose}
+    );
+
+    return(\%opts);
+
 }
 
 1;
