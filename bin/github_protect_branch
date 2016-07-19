@@ -7,35 +7,35 @@ use feature ':5.10';
 
 =head1 NAME
 
-github_protect_branch - Set up protected branch rules on an existing repo
+github_protect_branch - set up protected branch rules on an existing repo
 
 =head1 SYNOPSIS
 
     $ export GITHUB_TOKEN=TOKEN
-    $ export GITHUB_HOST=my.github.com
+    $ export GITHUB_HOST=github.example.com
     $ github_protect_branch [-t token] [-o org] -r repo_name [-u user] [-s status_check] [-v]
 
     # EXAMPLES
 
-    # Set up branch protection so that only commits with status_checks 'ci/unit' and 'ci/functional' can be pushed/merged to master
-    $ export GITHUB_TOKEN=TOKEN
-    $ export GITHUB_HOST=my.github.com
+    # Set up branch protection so that only commits with status_checks
+    # 'ci/unit' and 'ci/functional' can be pushed/merged to master
     $ github_protect_branch -o my_org -r my_repo -s 'ci/unit' -s 'ci/functional'
 
     # Set up branch protection so that only 'tflint' and 'cnandor' can push/merge to master
-    $ export GITHUB_TOKEN=TOKEN
-    $ export GITHUB_HOST=my.github.com
     $ github_protect_branch -o my_org -r my_repo -u tflint -u cnandor
 
 =head1 DESCRIPTION
 
 Given a repo name and a list of statuses and/or users, sets up branch protection for the master branch of that repo.
 
+NOT TESTED on GitHub.com, only on GitHub Enterprise.  Due to lack of API support, this unfortunately directly hits web endpoints with form manipulation.
+
+
 =head1 REQUIREMENTS
 
 =over 4
 
-=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://my-github-server.com/settings/tokens>).
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
 You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
 
@@ -51,15 +51,17 @@ You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it 
 
 Prints brief help message and exits.
 
+=item B<-V|--version>
+
+Prints version and exits.
+
 =item B<-t|--token>
 
-Personal access token to use GitHub API.  Can use environment variable
-C<$GITHUB_TOKEN> instead.
+Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
 
-=item B<-H|--Host>
+=item B<-H|--host>
 
-Hostname of your GitHub Enterprise host e.g. github.myorg.com
-C<$GITHUB_HOST> instead.
+Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use environment variable C<$GITHUB_HOST> instead.
 
 =item B<-o|--org>
 
@@ -93,11 +95,16 @@ Disallow pushing/merging to master unless the status_check(s) are present on the
 
 =item B<-v|--verbose>
 
-Outputs the HTTP request and response to STDERR (so that you can get the
-output and still process the content with C<jq>).  One C<-v> shows just
-the headers, while two shows the content as well.
+Outputs the HTTP request and response to STDERR (so that you can get the output and still process the content with C<jq>).  One C<-v> shows just the headers, while two shows the content as well.
 
 =back
+
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2016, Marchex.
+
+This library is free software; you may redistribute it and/or modify it under the same terms as Perl itself.
 
 =cut
 

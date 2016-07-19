@@ -13,7 +13,7 @@ github_search - search GitHub code
 =head1 SYNOPSIS
 
     $ export GITHUB_TOKEN=TOKEN
-    $ export GITHUB_HOST=my.github.com
+    $ export GITHUB_HOST=github.example.com
 
     # search all repos
     $ github_search xyzzy
@@ -21,7 +21,14 @@ github_search - search GitHub code
 
 =head1 DESCRIPTION
 
-See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for more information about searching code in GitHub.
+See the documentation for more information about searching code in GitHub:
+
+    # GitHub.com
+    https://help.github.com/articles/searching-code/
+
+    # GitHub Enterprise
+    https://help.github.com/enterprise/2.6/user/articles/searching-code/
+
 
 =over 4
 
@@ -40,9 +47,9 @@ See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for 
 
 =over 4
 
-=item * Create personal access token on GitHub with scope "repo" (https://my-github-server.com/settings/tokens)
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
-You can save the token in the environment variable GITHUB_TOKEN, or pass it in the command line.
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
 
 =back
 
@@ -55,10 +62,17 @@ You can save the token in the environment variable GITHUB_TOKEN, or pass it in t
 
 Prints brief help message and exits.
 
+=item B<-V|--version>
+
+Prints version and exits.
+
 =item B<-t|--token>
 
-Personal access token to use GitHub API.  Can use environment variable
-C<$GITHUB_TOKEN> instead.
+Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
+
+=item B<-H|--host>
+
+Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use environment variable C<$GITHUB_HOST> instead.
 
 =item B<-o|--org>
 
