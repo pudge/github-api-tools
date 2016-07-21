@@ -1,4 +1,4 @@
-# github_utils
+# github-api-tools
 
 These are command-line utilities, and a Perl library, for dealing with the GitHub API.  The tools work with both GitHub.com, and GitHub Enterprise.
 
