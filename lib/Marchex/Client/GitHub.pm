@@ -107,6 +107,12 @@ sub new {
         $self->{base}   //= $self->{uri} . '/api/v3';
     }
 
+    eval {
+        require Marchex::Client::Tiny;
+        $self->{tiny} = Marchex::Client::Tiny->new;
+    };
+    undef $@;
+
     return $self;
 }
 
@@ -302,6 +308,11 @@ sub init {
 
     return(\%opts);
 
+}
+
+sub format_url {
+    my($self, $url) = @_;
+    return $self->{tiny} ? $self->{tiny}->tinify($url) : $url;
 }
 
 1;
