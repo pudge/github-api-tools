@@ -135,6 +135,8 @@ sub _url {
     # if link, it contains the info needed, we don't re-add the data
     # if not GET, data will be added to request instead of URL
     if (!$options->{link} && $method eq 'GET' && $data) {
+        die 'data in GET request cannot contain complex data structures'
+            if ref $data && grep { ref } values %$data;
         my $query = ref $data ? (
             join '&', map { sprintf '%s=%s', $_, $data->{$_} } sort keys %$data
         ) : $data;
@@ -184,6 +186,9 @@ sub _follow_links {
     my($self, $res, $content, $method, $api, $data, $options) = @_;
 
     # in case copied in from previous call
+    # if there are links, we always want to set it in the API object
+    # even if no_follow is set, so callers could follow it manually
+    # if they wanted to
     delete $self->{links};
 
     # if there's a next "Link" then automatically follow it ...

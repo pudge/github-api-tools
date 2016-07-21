@@ -85,14 +85,11 @@ sub command_url {
     my $gh = _init() or return;
 
     my $base = $gh->{base};
-#    my $fq_base = 'https://foo/user/repos';
 
     is($gh->_url(GET => 'user'), "$base/user", 'verify normal API URL');
     is($gh->_url(GET => '/user'), "$base/user", 'verify normal API URL');
     is($gh->_url(GET => 'user/repos'), "$base/user/repos", 'verify normal API URL');
     is($gh->_url(GET => '/user/repos'), "$base/user/repos", 'verify normal API URL');
-
-#    is($gh->_url(GET => $fq_base), $fq_base, 'verify FQ URL');
 
     is($gh->_url(GET => 'user', 'bar=baz'), "$base/user?bar=baz", 'verify preformatted URL data');
     is($gh->_url(GET => 'user', { bar => 'baz' }), "$base/user?bar=baz", 'verify simple URL data');
@@ -118,9 +115,7 @@ sub command_url_fqbase {
     is($gh->_url(GET => $base, 'bar=baz'), "$base?bar=baz", 'verify preformatted URL data');
     is($gh->_url(GET => $base, { bar => 'baz' }), "$base?bar=baz", 'verify simple URL data');
     is($gh->_url(GET => $base, { bar => 'baz', buz => 'biz' }), "$base?bar=baz&buz=biz", 'verify more complex URL data');
-    # warn on complex data structures and GET?
-    like($gh->_url(GET => $base, { bar => ['baz', 'quux'], buz => 'biz' }), qr/^$base\?bar=ARRAY\(.+?\)&buz=biz$/, 'verify more complex URL data');
- 
+
     is($gh->_url(POST => $base, 'bar=baz'), $base, 'verify no URL data in POST');
     is($gh->_url(POST => $base, { bar => 'baz' }), $base, 'verify no URL data in POST');
     is($gh->_url(POST => $base, { bar => ['baz', 'quux'], buz => 'biz' }), $base, 'verify no URL data in POST');
@@ -142,8 +137,7 @@ sub command_req {
         { data => { bar => 'baz' }, content => '{"bar":"baz"}', query_string => 'bar=baz' },
         { data => { bar => ['baz', {'buz' => 'biz'}] },
             content => '{"bar":["baz",{"buz":"biz"}]}',
-            # warn on complex data structures and GET?
-            query_string => qr/bar=ARRAY\(.+?\)/
+            get_fail => qr/data in GET request cannot contain complex data structure/
         },
     );
 
@@ -158,7 +152,12 @@ sub command_req {
                             $test->{options}{accept_type} = $accept_type;
                             $test->{options}{link} = $link;
 
-                            my $url = $gh->_url($method => 'user', $test->{data}, $test->{options});
+                            my $url = eval { $gh->_url($method => 'user', $test->{data}, $test->{options}) };
+                            my $err = $@;
+                            if ($method eq 'GET' && !$link && $test->{get_fail}) {
+                                like($err, $test->{get_fail}, 'verify error when using complex data in GET request');
+                                return;
+                            }
                             my $req = $gh->_req($method => $url, $test->{data}, $test->{options});
 
                             is(blessed($req), 'HTTP::Request', 'verify request object');
@@ -171,12 +170,7 @@ sub command_req {
                                 }
                                 else {
                                     my $query_string = $test->{query_string} // $test->{data};
-                                    if (ref($query_string) eq 'Regexp') {
-                                        like($req->uri, qr|^$gh->{base}/user\?$query_string$|, "uri matches '$gh->{base}/user?$query_string'");
-                                    }
-                                    else {
-                                        is($req->uri, "$gh->{base}/user?$query_string", "uri is '$gh->{base}/user?$query_string'");
-                                    }
+                                    is($req->uri, "$gh->{base}/user?$query_string", "uri is '$gh->{base}/user?$query_string'");
                                 }
                             }
                             else {
@@ -189,11 +183,11 @@ sub command_req {
                             my $accept_type_t = $accept_type // 'application/vnd.github.v3+json';
                             is($req->header('Accept'), $accept_type_t, "accept type is '$accept_type_t'");
                         };
+                        $i++;
                     }
                 }
             }
         }
-        $i++;
     }
 }
 

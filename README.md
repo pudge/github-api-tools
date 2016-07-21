@@ -31,6 +31,8 @@ There are several perl module prereqs for this, all listed in Makefile.PL, but m
 * libjson-xs-perl
 * libwww-mechanize-perl
 
+If you choose to build your own Perl modules from source, or using a CPAN tool, you will need the perl build tools for your platform.
+
 ## COPYRIGHT AND LICENSE
 Copyright 2016, Marchex.
 
