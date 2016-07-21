@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 use warnings;
 use strict;
 use feature ':5.10';
@@ -7,21 +7,28 @@ use feature ':5.10';
 
 =head1 NAME
 
-github_approve_pr - approve a pull request from the command line
+github_approve_pr - set status for pull request from the command line
 
 
 =head1 SYNOPSIS
 
     $ export GITHUB_TOKEN=TOKEN
-    $ export GITHUB_HOST=my.github.com
+    $ export GITHUB_HOST=github.example.com
     $ github_approve_pr my_org/my_repo 1
+
+
+=head1 DESCRIPTION
+
+This script simply sets a status (success, failure, pending) on a given pull request.  Given an org/repo and pull request number, it will show you the commits and ask you to approve it.  Yes=success, No=failure, Skip=pending.
+
+This script is not a complete tool; it's more of a proof-of-concept.
 
 
 =head1 REQUIREMENTS
 
 =over 4
 
-=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://my-github-host.com/settings/tokens>).
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
 You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
 
@@ -36,17 +43,34 @@ You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it 
 
 Prints brief help message and exits.
 
-=item B<-t|--token>
+==item B<-V|--version>
 
-Personal access token to use GitHub API.  Can use environment variable
-C<$GITHUB_TOKEN> instead.
+Prints version and exits.
 
-=item B<-H|--Host>
+item B<-t|--token>
 
-Hostname of your GitHub Enterprise host e.g. github.myorg.com
-C<$GITHUB_HOST> instead.
+Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
+
+=item B<-H|--host>
+
+Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use environment variable C<$GITHUB_HOST> instead.
+
+=item B<-u|--target_url>
+
+Set a URL for the status, so a user can go to it for more information.
+
+=item B<-u|--context>
+
+The context to set the status on.  Default is C<reviewed>.
 
 =back
+
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2016, Marchex.
+
+This library is free software; you may redistribute it and/or modify it under the same terms as Perl itself.
 
 =cut
 
@@ -56,10 +80,7 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Pod::Usage;
-
-use Getopt::Long;
 use HTTP::Response;
 use JSON::XS qw(decode_json encode_json);
 use MIME::Base64;
@@ -117,35 +138,15 @@ sub status {
 }
 
 sub init {
-    my %opts;
-
-    Getopt::Long::Configure('bundling');
-    GetOptions(
-        'h|help'                => sub { pod2usage(-verbose => 2) },
-        't|token=s'             => \$opts{token},
-        'H|Host=s'              => \$opts{host},
-        'u|target_url=s'        => \$opts{target_url},
-        'c|context=s'           => \$opts{context},
-    ) or pod2usage(-verbose => 1);
-
-    $opts{host} //= $ENV{GITHUB_HOST};
-    pod2usage(-verbose => 1, -message => "no github host provided\n")
-        unless $opts{host};
-
-    $opts{token} //= $ENV{GITHUB_TOKEN};
-
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
-
-    $opts{api} = Marchex::Client::GitHub->new(
-        org     => $opts{org},
-        token   => $opts{token}
+    my $gh = Marchex::Client::GitHub->init(
+        'u|target_url=s'        => 'target_url',
+        'c|context=s'           => 'context',
     );
 
-    (@opts{qw(repo pr_num user)}) = @ARGV;
-    $opts{user}         //= $ENV{USER};
-    $opts{context}      //= 'reviewed';
+    (@{$gh}{qw(repo pr_num user)}) = @ARGV;
+    $gh->{user}         //= $ENV{USER};
+    $gh->{context}      //= 'reviewed';
     @ARGV = ();
 
-    return(\%opts);
+    return($gh);
 }
