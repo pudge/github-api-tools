@@ -14,8 +14,7 @@ use Pod::Usage;
 use Getopt::Long;
 
 sub new {
-    my($class, @opts) = @_;
-    my %opts = @opts;
+    my($class, %opts) = @_;
     $opts{verbose} ||= 0;
 
     my $self = bless \%opts, $class;
@@ -25,6 +24,10 @@ sub new {
     $self->{host}   //= $ENV{GITHUB_HOST};
     $self->{user}   //= $ENV{USER};
 
+    die 'Must have host and token set; please see documentation'
+        unless $self->{host} && $self->{token};
+
+    # currently only HTTPS supported
     if ($self->{host} eq 'github.com') {
         $self->{uri}  = 'https://api.github.com';
         $self->{base} = $self->{uri};
@@ -42,12 +45,25 @@ sub new {
 sub command {
     my($self, $method, $api, $data, $options) = @_;
 
-    delete $self->{links};
-    $api =~ s/^\///;
+    my $url = $self->_url($method, $api, $data, $options);
+    my $req = $self->_req($method, $url, $data, $options);
+    my $res = $self->_res($req);
+    my $content = $self->_content($res, $method, $api, $data, $options);
+
+    return $content;
+}
+
+sub _url {
+    my($self, $method, $api, $data, $options) = @_;
+
+    # leading / is optional
+    $api =~ s|^/||;
 
     # can optionally pass in a full URI instead of just the API method
-    my $url = $api =~ /^https?:\/\// ? $api :"$self->{base}/$api";
+    my $url = $api =~ /^https?:\/\// ? $api : "$self->{base}/$api";
 
+    # if link, it contains the info needed, we don't re-add the data
+    # if not GET, data will be added to request instead of URL
     if (!$options->{link} && $method eq 'GET' && $data) {
         my $query = ref $data ? (
             join '&', map { sprintf '%s=%s', $_, $data->{$_} } sort keys %$data
@@ -55,9 +71,15 @@ sub command {
         $url .= '?' . $query if $query && length($query);
     }
 
-    # allow passing in a "link" option to override the URL
+    return $url;
+}
+
+sub _req {
+    my($self, $method, $url, $data, $options) = @_;
     my $req = HTTP::Request->new($method => ($options->{link} || $url));
 
+    # if link, it contains the info needed, we don't re-add the data
+    # if GET, data was added to URL instead of the request
     if (!$options->{link} && $method ne 'GET' && $data) {
         my $content = ref $data ? encode_json($data) : $data;
         if ($content && length($content)) {
@@ -69,17 +91,15 @@ sub command {
     $req->header(Authorization => 'token ' . uri_escape($self->{token}));
     $req->header(Accept => $options->{accept_type} || 'application/vnd.github.v3+json');
 
-    if ($self->{verbose}) {
-        my $req_str = $self->_prep_str($req->as_string, '> ');
-        $req_str =~ s/^(> Authorization: token) .+$/$1 PRIVATE/m;
-        print STDERR $req_str, "--\n";
-    }
+    $self->_debug_input($req);
 
+    return $req;
+}
+
+sub _res {
+    my($self, $req) = @_;
     my $res = $self->{ua}->request($req);
-    if ($self->{verbose}) {
-        my $res_str = $self->_prep_str($res->as_string, '< ');
-        print STDERR $res_str, "--\n";
-    }
+    $self->_debug_output($res);
 
     unless ($res->is_success) {
         die sprintf "%s:\n%s\n",
@@ -87,7 +107,14 @@ sub command {
             $self->pretty($res->content);
     }
 
-    my $content = eval { decode_json($res->content) } // $res->content;
+    return $res;
+}
+
+sub _follow_links {
+    my($self, $res, $content, $method, $api, $data, $options) = @_;
+
+    # in case copied in from previous call
+    delete $self->{links};
 
     # if there's a next "Link" then automatically follow it ...
     if ($res->header('Link') && $content && ref($content)) {
@@ -95,6 +122,7 @@ sub command {
         if ($links{'rel="next"'}) {
             (my $link = $links{'rel="next"'}) =~ s/^<(.+?)>$/$1/;
             $self->{links}{next} = $link;
+
             # ... unless no_follow is set
             if (!$options->{no_follow}) {
                 my $next = $self->command($method, $api, $data, { %$options, link => $link });
@@ -108,8 +136,32 @@ sub command {
             }
         }
     }
+}
+
+sub _content {
+    my($self, $res, $method, $api, $data, $options) = @_;
+
+    my $content = eval { decode_json($res->content) } // $res->content;
+    $self->_follow_links($res, $content, $method, $api, $data, $options);
 
     return $content;
+}
+
+sub _debug_input {
+    my($self, $req) = @_;
+    if ($self->{verbose}) {
+        my $req_str = $self->_prep_str($req->as_string, '> ');
+        $req_str =~ s/^(> Authorization: token) .+$/$1 PRIVATE/m;
+        print STDERR $req_str, "--\n";
+    }
+}
+
+sub _debug_output {
+    my($self, $res) = @_;
+    if ($self->{verbose}) {
+        my $res_str = $self->_prep_str($res->as_string, '< ');
+        print STDERR $res_str, "--\n";
+    }
 }
 
 sub _prep_str {

@@ -36,7 +36,7 @@ See the documentation for more information about searching code in GitHub:
 
 =item * If there are more than 30 results and you're using an interactive shell, the program will ask you if you want to see the next page of results.  Otherwise, you will get only the first 30 results.
 
-=item * If the contents of the file do not contain the search term, only the path to the file is given in the output, without a diff.
+=item * If the contents of the file do not contain the search term, only the path to the file is given in the output, without attempting to show any contents.
 
 =item * This currently does not support other searches in GitHub, only code searches.
 
@@ -92,7 +92,7 @@ Print URL for each search result.
 
 =item B<-l|--list_only>
 
-Only list files with differences, do not print the differences.
+Only list matching files; do not print the matches in the files.
 
 =item B<-T|--team>
 

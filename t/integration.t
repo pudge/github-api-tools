@@ -2,6 +2,7 @@ use strict;
 use warnings;
 
 use Test::More;
+use constant MAX_RETURN => 30; # max search return values
 
 uses();
 check_env() or finish();
@@ -11,6 +12,7 @@ check_env() or finish();
 
 my @tests = (
     'user',
+    'links'
 );
 
 for (@tests) {
@@ -48,7 +50,7 @@ sub _init {
 sub _cli {
     my(@args) = @_;
     my $args = join ' ', map { quotemeta } @args;
-    my $output = eval { `./blib/script/github_api $args` };
+    my $output = eval { `$^X -Mblib ./blib/script/github_api $args` };
     ok(!$@, sprintf("no error %s", $@//''));
 
     my $obj = JSON::XS::decode_json($output);
@@ -91,3 +93,35 @@ sub user {
     is_deeply($repos, $c_repos, 'compare CLI to API output');
 }
 
+# we want to test that following links (API pagination) works.
+# this is hard to test, since we don't know what the data will look
+# like, especially if GITHUB_HOST isn't github.com.  so we end up
+# testing search results, and *hoping* that it also tests following links.
+sub links {
+    my $q;
+    my $gh = _init();
+
+    if ($ENV{GITHUB_HOST} eq 'github.com') {
+        $q = 'org:github language:perl';
+    }
+    else {
+        # just a guess at what might give a lot of results
+        my $user = _cmd($gh, GET => 'user');
+        # 'the' is a pretty common word
+        $q = "org:$user->{login} the";
+    }
+
+    my $search = _cmd($gh, GET => '/search/code', { 'q' => $q });
+    # no matter how many entries there are, this should return all the search results
+    # the danger is if there's thousands of results ... hopefully not
+    is(scalar(@{$search->{items}}), $search->{total_count}, "total count: $search->{total_count}");
+
+    # hopefully the total count is great enough that we can test no_follow to see if
+    # we get less than MAX_RETURN
+    if ($search->{total_count} > MAX_RETURN) {
+        my $search_no_follow = _cmd($gh, GET => '/search/code', { 'q' => $q }, { no_follow => 1 });
+        is(scalar(@{$search_no_follow->{items}}), MAX_RETURN,
+            sprintf("total count: %d/%d", MAX_RETURN, $search_no_follow->{total_count})
+        );
+    }
+}
