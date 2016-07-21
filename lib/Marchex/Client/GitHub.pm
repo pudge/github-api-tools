@@ -1,5 +1,75 @@
 package Marchex::Client::GitHub;
 
+=pod
+
+=head1 NAME
+
+Marchex::Client::GitHub - Perl framework for using GitHub API
+
+=head1 SYNOPSIS
+
+    use Marchex::Client::GitHub;
+    my $gh = Marchex::Client::GitHub->new(
+        host    => 'github.com',
+        token   => $my_token,
+        verbose => 1  # 0=none, 1=HTTP request/response, 2=include response content
+    );
+
+    my $user = $gh->command(GET => 'user');
+    print $user->{login};
+
+    my $search = $gh->command(GET => 'search/code', {
+        q => 'org:github github'
+    });
+
+    my $search_lang = $gh->command(GET => 'search/code', {
+        q => 'org:github language:perl'
+    }, {
+        page_limit      => 10, # get no more than 10 pages of results
+        content_type    => 'application/json', # default
+        accept_type     => 'application/vnd.github.v3+json' # default
+    });
+
+
+=head1 DESCRIPTION
+
+You must use the correct version of the documentation for your GitHub version, which is currently:
+
+    # GitHub.com
+    https://developer.github.com/v3/
+
+    # GitHub Enterprise
+    https://developer.github.com/enterprise/2.6/v3/
+
+Follow the specific instructions in the GitHub API for each method you want to call.  The API can also be a full URL, instead of the API name, for example:
+
+    my $user = $gh->command(GET => "https://api.github.com/$user");
+
+The return value will be the JSON object, converted to a Perl data structure.
+
+Pagination is automatically followed, and can be controlled with C<page_limit> and C<no_follow> options on the call to C<command>.  When pagination is followed, if the result object is an array, all of the results are put into the array; if it is a hash, then the results are put into C<$obj->{items}>.
+
+
+=head1 REQUIREMENTS
+
+=over 4
+
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
+
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+
+=back
+
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2016, Marchex.
+
+This library is free software; you may redistribute it and/or modify it under the same terms as Perl itself.
+
+=cut
+
+
 use warnings;
 use strict;
 
@@ -122,9 +192,17 @@ sub _follow_links {
         if ($links{'rel="next"'}) {
             (my $link = $links{'rel="next"'}) =~ s/^<(.+?)>$/$1/;
             $self->{links}{next} = $link;
+            my $no_follow = $options->{no_follow};
+
+            if (!$no_follow && $options->{page_limit}) {
+                my($page) = $link =~ /\bpage=(\d+)/;
+                if ($page && $page > $options->{page_limit}) {
+                    $no_follow = 1;
+                }
+            }
 
             # ... unless no_follow is set
-            if (!$options->{no_follow}) {
+            if (!$no_follow) {
                 my $next = $self->command($method, $api, $data, { %$options, link => $link });
                 my $ref = ref $content;
                 if ($ref eq 'ARRAY') {

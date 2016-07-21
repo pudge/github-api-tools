@@ -30,6 +30,8 @@ sub finish {
 
 sub uses {
     use_ok('Marchex::Client::GitHub');
+    use_ok('Marchex::Color');
+    use_ok('Marchex::OpenURL');
 }
 
 sub _init {
