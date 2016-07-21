@@ -1,5 +1,28 @@
 package Marchex::Color;
 
+=pod
+
+=head1 NAME
+
+Marchex::Color - Simple helper for printing ANSI colors
+
+=head1 SYNOPSIS
+
+    use Marchex::Color qw(:colors color_str);
+    print color_str("neat!", RED), "\n";
+
+=head1 DESCRIPTION
+
+Just wraps strings in ASNI colors.  It will not color strings if the program not connected to a TTY.
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2016, Marchex.
+
+This library is free software; you may redistribute it and/or modify it under the same terms as Perl itself.
+
+=cut
+
 use warnings;
 use strict;
 

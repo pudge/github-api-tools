@@ -1,11 +1,34 @@
 package Marchex::OpenURL;
 
+=pod
+
+=head1 NAME
+
+Marchex::OpenURL - Simple helper for printing ANSI colors
+
+=head1 SYNOPSIS
+
+    use Marchex::OpenURL qw(open_url open_url_with);
+    open_url('http://www.marchex.com/');
+    open_url_with('xdg-open', 'http://www.marchex.com/');
+
+=head1 DESCRIPTION
+
+This package attempts to open a URL in your local browser.  If the environment variable C<OPEN_URL_SSH> is true, and you're logged in via SSH, it will attempt to open a connection back to your host and open the URL there.  Otherwise, it will attempt to open the URL on the executing host (which may end up opening it via X11).
+
+If the environment variables C<OPEN_URL_REMOTE_CMD> or C<BROWSER> are set, will attempt (in that order) to use that as the browser instead of the default, which is C<open> on Mac OS X and C<xdg-open> otherwise.
+
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2016, Marchex.
+
+This library is free software; you may redistribute it and/or modify it under the same terms as Perl itself.
+
+=cut
+
 use warnings;
 use strict;
-
-# if OPEN_URL_SSH is true, and you're logged in via SSH, will attempt to
-# open a connection back to your host and open the URL there.  otherwise,
-# will attempt to open the URL locally.
 
 use base 'Exporter';
 our @EXPORT_OK = qw(open_url open_url_with);

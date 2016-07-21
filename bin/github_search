@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 use warnings;
 use strict;
 use feature ':5.10';
@@ -13,7 +13,7 @@ github_search - search GitHub code
 =head1 SYNOPSIS
 
     $ export GITHUB_TOKEN=TOKEN
-    $ export GITHUB_HOST=my.github.com
+    $ export GITHUB_HOST=github.example.com
 
     # search all repos
     $ github_search xyzzy
@@ -21,7 +21,14 @@ github_search - search GitHub code
 
 =head1 DESCRIPTION
 
-See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for more information about searching code in GitHub.
+See the documentation for more information about searching code in GitHub:
+
+    # GitHub.com
+    https://help.github.com/articles/searching-code/
+
+    # GitHub Enterprise
+    https://help.github.com/enterprise/2.6/user/articles/searching-code/
+
 
 =over 4
 
@@ -29,7 +36,7 @@ See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for 
 
 =item * If there are more than 30 results and you're using an interactive shell, the program will ask you if you want to see the next page of results.  Otherwise, you will get only the first 30 results.
 
-=item * If the contents of the file do not contain the search term, only the path to the file is given in the output, without a diff.
+=item * If the contents of the file do not contain the search term, only the path to the file is given in the output, without attempting to show any contents.
 
 =item * This currently does not support other searches in GitHub, only code searches.
 
@@ -40,9 +47,9 @@ See L<https://help.github.com/enterprise/2.5/user/articles/searching-code/> for 
 
 =over 4
 
-=item * Create personal access token on GitHub with scope "repo" (https://my-github-server.com/settings/tokens)
+=item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
-You can save the token in the environment variable GITHUB_TOKEN, or pass it in the command line.
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
 
 =back
 
@@ -55,10 +62,17 @@ You can save the token in the environment variable GITHUB_TOKEN, or pass it in t
 
 Prints brief help message and exits.
 
+=item B<-V|--version>
+
+Prints version and exits.
+
 =item B<-t|--token>
 
-Personal access token to use GitHub API.  Can use environment variable
-C<$GITHUB_TOKEN> instead.
+Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
+
+=item B<-H|--host>
+
+Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use environment variable C<$GITHUB_HOST> instead.
 
 =item B<-o|--org>
 
@@ -78,7 +92,7 @@ Print URL for each search result.
 
 =item B<-l|--list_only>
 
-Only list files with differences, do not print the differences.
+Only list matching files; do not print the matches in the files.
 
 =item B<-T|--team>
 
@@ -113,11 +127,9 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
-use Data::Dumper; $Data::Dumper::Sortkeys=1;
 use Pod::Usage;
 
 use File::Temp 'tempfile';
-use Getopt::Long;
 use HTTP::Response;
 use JSON::XS qw(decode_json encode_json);
 use MIME::Base64;
@@ -260,43 +272,24 @@ sub search {
 }
 
 sub init {
-    my %opts;
-
-    Getopt::Long::Configure('bundling');
-    GetOptions(
-        'h|help'                => sub { pod2usage(-verbose => 2) },
-        't|token=s'             => \$opts{token},
-        'H|host=s'              => \$opts{host},
-        'o|org=s'               => \$opts{org},
-        'u|url'                 => \$opts{url},
-        'O|open_url:s'          => \$opts{open_url},
-        'P|print_url'           => \$opts{print_url},
-        'l|list_only'           => \$opts{list_only},
-        'T|team=s'              => \@{$opts{teams}},
-        'f|filter=s'            => \@{$opts{filter}},
-        'i|indexed_sort'        => \$opts{indexed_sort},
-        'v|verbose+'            => \$opts{verbose}
-    ) or pod2usage(-verbose => 1);
-
-    $opts{host} //= $ENV{GITHUB_HOST};
-    pod2usage(-verbose => 1, -message => "no github host provided\n")
-        unless $opts{host};
-
-    $opts{token} //= $ENV{GITHUB_TOKEN};
-
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
-
-    $opts{set_org} = 1 if $opts{org};
-    $opts{org} //= '';
-
-    $opts{api} = Marchex::Client::GitHub->new(
-        verbose => $opts{verbose},
-        token   => $opts{token}
+    my $gh = Marchex::Client::GitHub->init(
+        'o|org=s'               => 'org',
+        'u|url'                 => 'url',
+        'O|open_url:s'          => 'open_url',
+        'P|print_url'           => 'print_url',
+        'l|list_only'           => 'list_only',
+        'T|team=s@'             => 'teams',
+        'f|filter=s@'           => 'filter',
+        'i|indexed_sort'        => 'indexed_sort',
     );
 
-    $opts{term} = shift @ARGV;
+    $gh->{filter} //= [];
+
+    $gh->{set_org} = 1 if $gh->{org};
+    $gh->{org} //= '';
+
+    $gh->{term} = shift @ARGV;
     @ARGV = ();
 
-    return(\%opts);
+    return($gh);
 }
