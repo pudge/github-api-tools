@@ -114,7 +114,6 @@ BEGIN {
 }
 
 use Pod::Usage;
-use WWW::Mechanize;
 
 use Marchex::Client::GitHub;
 
@@ -161,53 +160,15 @@ sub get_user_id_from_name {
 }
 
 sub setup_authorized_users {
-    # This part is not supported through the API so we need to do it through a browser
     return unless $gh->{user};
     my @user_ids = map{ get_user_id_from_name($_) } @{$gh->{user}};
 
-    # Login to set up session cookies
-    my $mech = WWW::Mechanize->new;
-    $mech->get( "https://$gh->{host}/login" );
-    $mech->submit_form( fields => {
-        login => $ENV{USER},
-        password => $gh->{pass}
-    });
-
-    # Find the "Restrict who can push to this branch" form
-    $mech->get( "https://$gh->{host}/$gh->{org}/$gh->{repo}/settings/branches/master" );
-    my @forms = $mech->forms;
-    my $form_number = 0;
-    my $form;
-    for my $i (0 .. $#forms) {
-        if ($forms[$i]->action =~ m|/settings/branches/master$|) {
-            $mech->form_number(1 + $i);
-            $form = $forms[$i];
-            last;
-        }
-    }
-
-    # Remove any existing users in the form
-    @{$form->{inputs}} = grep { !( ref eq 'HTML::Form::TextInput' && $_->{name} eq 'user_ids[]') } @{$form->{inputs}};
-
-    # Add requested users - TODO find a natively supported mechanize method for this
-    for my $u (@user_ids) {
-        my $user_form_entry = bless( {
-            '/' => '/',
-            'class' => 'form-control',
-            'name' => 'user_ids[]',
-            'readonly' => 1,
-            'type' => 'hidden',
-            'value' => $u,
-            'value_name' => ''
-            }, 'HTML::Form::TextInput', );
-
-        push @{$form->{inputs}}, $user_form_entry;
-    }
-
-    # Submit the now-populated form
-    $mech->submit_form( fields => { 'authorized_users_or_teams' => 'on' } );
-
-    die "Restricting users failed for $gh->{user}: $@; exiting" if $@;
+    eval { $gh->{api}->command(
+            POST => "/repos/$gh->{org}/$gh->{repo}/branches/master/protection/restrictions/users",
+            \@user_ids,
+            { accept_type => 'application/vnd.github.loki-preview+json' }
+    ) };
+    die "Restricting users failed for $gh->{repo}: $@; exiting" if $@;
 
     print "Granted " . join(", ", @{$gh->{user}}) , " access to push to master on $gh->{repo}.\n";
 }

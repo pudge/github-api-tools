@@ -18,7 +18,6 @@ WriteMakefile(
         'MIME::Base64'          => 0,
         'Pod::Usage'            => 0,
         'URI::Escape'           => 0,
-        'WWW::Mechanize'        => 0,
     },
     EXE_FILES         => [<bin/*>]
 );

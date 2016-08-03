@@ -26,10 +26,9 @@ Use the `-h` flag to read the documentation for the program, and `-V` for the ve
 * make install
 
 ## PREREQUISITES
-There are several perl module prereqs for this, all listed in Makefile.PL, but most are included with perl.  You likely only need to get, at most, two: `JSON::XS` and `WWW::Mechanize`.  You can install these from the CPAN, or you can try installing them with your package manager:
+There are several perl module prereqs for this, all listed in Makefile.PL, but most are included with perl.  You likely only need to get, at most `JSON::XS`.  You can install this from the CPAN, or you can try installing them with your package manager:
 
 * libjson-xs-perl
-* libwww-mechanize-perl
 
 If you choose to build your own Perl modules from source, or using a CPAN tool, you will need the perl build tools for your platform.
 
