@@ -63,9 +63,13 @@ Personal access token to use GitHub API.  Can use environment variable C<$GITHUB
 
 Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use environment variable C<$GITHUB_HOST> instead.
 
+=item B<-r|--repo>
+
+GitHub repo to protect.
+
 =item B<-o|--org>
 
-Github organization in which the repo is located.
+GitHub organization in which the repo is located.
 
 =item B<-u|--user>
 
@@ -120,57 +124,53 @@ use Marchex::Client::GitHub;
 my $gh = init();
 
 protect_branch();
-setup_authorized_users();
 
 sub protect_branch {
     return unless $gh->{status_check};
 
     # Set up $patch_data to enable protection
     my $patch_data = {
-            protection  => {
-                enabled => JSON::XS::true(),
-            }
-        };
+        protection  => {
+            enabled => JSON::XS::true(),
+        }
+    };
 
     # If requested, set status check enforcement
     if ($gh->{status_check}) {
-        $patch_data->{protection}{required_status_checks} = {
+        $patch_data->{required_status_checks} = {
             # For now, make the rule apply to everyone
-            enforcement_level   => 'everyone',
+            include_admins      => JSON::XS::true(),
+            strict              => JSON::XS::true(),
             contexts            => $gh->{status_check}
         };
     }
+    else {
+        $patch_data->{required_status_checks} = undef;
+    }
+
+    # If requested, add users with push access
+    if ($gh->{user}) {
+        $patch_data->{restrictions} = {
+            users => $gh->{user},
+            teams => []
+        };
+    }
+    else {
+        $patch_data->{restrictions} = undef;
+    }
 
     eval { $gh->{api}->command(
-            PATCH => "/repos/$gh->{org}/$gh->{repo}/branches/master",
-            $patch_data,
-            { accept_type => 'application/vnd.github.loki-preview+json' }
+        PUT => "/repos/$gh->{org}/$gh->{repo}/branches/master/protection",
+        $patch_data,
+        { accept_type => 'application/vnd.github.loki-preview+json' }
     ) };
     die "Cannot set branch protection for $gh->{repo}: $@; exiting" if $@;
 
-    print "Added status_check(s) " . join(", ", @{$gh->{status_check}}) , " requirements to master on $gh->{repo}.\n";
-}
+    print "Added status_check(s) " . join(", ", @{$gh->{status_check}}) , " requirements to master on $gh->{repo}.\n"
+        if $gh->{status_check};
 
-sub get_user_id_from_name {
-    my $username = shift;
-    my $user = eval { $gh->{api}->command( GET => "/users/$username" ) };
-    die "Cannot get user ID for $user: $@; exiting" if $@;
-
-    return $user->{id};
-}
-
-sub setup_authorized_users {
-    return unless $gh->{user};
-    my @user_ids = map{ get_user_id_from_name($_) } @{$gh->{user}};
-
-    eval { $gh->{api}->command(
-            POST => "/repos/$gh->{org}/$gh->{repo}/branches/master/protection/restrictions/users",
-            \@user_ids,
-            { accept_type => 'application/vnd.github.loki-preview+json' }
-    ) };
-    die "Restricting users failed for $gh->{repo}: $@; exiting" if $@;
-
-    print "Granted " . join(", ", @{$gh->{user}}) , " access to push to master on $gh->{repo}.\n";
+    print "Granted " . join(", ", @{$gh->{user}}) , " access to push to master on $gh->{repo}.\n"
+        if $gh->{user};
 }
 
 sub init {
@@ -190,36 +190,5 @@ sub init {
     pod2usage(-verbose => 1, -message => "nothing to do - please specify one or both of user or status_checks\n")
         unless $gh->{user} || $gh->{status_check};
 
-    prompt_for_credentials($gh->{api});
-    $gh->{pass} = $gh->{api}->{pass};
-
     return($gh);
-}
-
-sub prompt_for_credentials {
-    my($self, $type, $prefix, $key) = @_;
-
-    $self->{user} //= $ENV{USER} // '';
-
-    my $username  = prompt_for("Username for [$self->{user}]");
-    $self->{user} = $username if $username;
-    $self->{pass} = prompt_for("Password", 1);
-}
-
-sub prompt_for {
-    my($prompt, $is_pass) = @_;
-    local $\;
-    local $| = 1;
-
-    # Disable displaying password when it's typed
-    qx(stty -echo) if $is_pass;
-    print "$prompt: ";
-
-    chomp(my $input = <STDIN>);
-    if ($is_pass) {
-        qx(stty echo);
-        print "\n";
-    }
-
-    return $input;
 }
