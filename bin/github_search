@@ -208,6 +208,8 @@ sub search {
     );
     my $links = $gh->{api}{links};
 
+    binmode STDOUT, ':encoding(UTF-8)';
+
     for my $item (@{$content->{items}}) {
         my $repo = "$item->{repository}{owner}{login}/$item->{repository}{name}";
 

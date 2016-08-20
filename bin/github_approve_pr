@@ -94,6 +94,9 @@ my $gh = init();
 my $last_sha;
 my $pr = "$gh->{repo}/pulls/$gh->{pr_num}";
 my $commits = $gh->{api}->command(GET => "/repos/$pr/commits");
+
+binmode STDOUT, ':encoding(UTF-8)';
+
 for my $commit (@$commits) {
     print color_str("commit $commit->{sha}", YELLOW), "\n";
     print "Author: $commit->{commit}{committer}{name} <$commit->{commit}{committer}{email}>\n";

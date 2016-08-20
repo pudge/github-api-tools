@@ -121,6 +121,7 @@ $options{accept_type}  = $gh->{accept_type}  if $gh->{accept_type};
 $options{content_type} = $gh->{content_type} if $gh->{content_type};
 $options{no_follow}    = $gh->{no_follow};
 
+binmode STDOUT, ':encoding(UTF-8)';
 print $gh->{api}->pretty(
     $gh->{api}->command($gh->{http_method} => $gh->{api_method}, $gh->{params}, \%options)
 ), "\n";
