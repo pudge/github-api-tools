@@ -89,7 +89,7 @@ sub new {
 
     my $self = bless \%opts, $class;
 
-    $self->{ua}       = LWP::UserAgent->new;
+    $self->{ua}       = $class->_ua();
     $self->{token}  //= $ENV{GITHUB_TOKEN};
     $self->{host}   //= $ENV{GITHUB_HOST};
     $self->{user}   //= $ENV{USER};
@@ -110,6 +110,11 @@ sub new {
     return $self;
 }
 
+sub _ua {
+    my $ua = LWP::UserAgent->new;
+    push @{ $ua->requests_redirectable }, 'PUT';
+    return $ua;
+}
 
 # $data can be a query-string for GET, and JSON for other HTTP methods
 sub command {
