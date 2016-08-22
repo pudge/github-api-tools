@@ -157,7 +157,8 @@ sub _req {
 
     # if link, it contains the info needed, we don't re-add the data
     # if GET, data was added to URL instead of the request
-    if (!$options->{link} && $method ne 'GET' && $data) {
+    if (!$options->{link} && $method ne 'GET') {
+        $data //= '{}';
         my $content = ref $data ? encode_json($data) : $data;
         if ($content && length($content)) {
             $req->content_type($options->{content_type} || 'application/json');
