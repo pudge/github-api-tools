@@ -13,7 +13,7 @@ github_protect_branch - set up protected branch rules on an existing repo
 
     $ export GITHUB_TOKEN=TOKEN
     $ export GITHUB_HOST=github.example.com
-    $ github_protect_branch [-t token] [-o org] -r repo_name [-u user] [-s status_check] [-v]
+    $ github_protect_branch [-t token] -o org -r repo_name [-u user] [-T team] [-s status_check] [-v]
 
     # EXAMPLES
 
@@ -21,19 +21,20 @@ github_protect_branch - set up protected branch rules on an existing repo
     # 'ci/unit' and 'ci/functional' can be pushed/merged to master
     $ github_protect_branch -o my_org -r my_repo -s 'ci/unit' -s 'ci/functional'
 
-    # Set up branch protection so that only 'tflint' and 'cnandor' can push/merge to master
-    $ github_protect_branch -o my_org -r my_repo -u tflint -u cnandor
+    # Set up branch protection so that only 'tflint' and 'cnandor', and CX team,
+    # can push/merge to master
+    $ github_protect_branch -o my_org -r my_repo -u tflint -u cnandor -T call-experience
 
 =head1 DESCRIPTION
 
-Given a repo name and a list of statuses and/or users, sets up branch protection for the master branch of that repo.
-
-NOT TESTED on GitHub.com, only on GitHub Enterprise.  Due to lack of API support, this unfortunately directly hits web endpoints with form manipulation.
+Given a repo name and users, teams, or status checks, sets up branch protection for the master branch of that repo.
 
 
 =head1 REQUIREMENTS
 
 =over 4
+
+=item * Requires GitHub.com or GitHub Enterprise 2.7 (L<https://developer.github.com/enterprise/2.7/v3/repos/branches/> and L<https://developer.github.com/enterprise/2.7/v3/repos/statuses/>).
 
 =item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
@@ -42,6 +43,8 @@ You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it 
 =item * Only works on repos that already have at least one commit on the master branch.
 
 =back
+
+B<NOTE>: this replaces existing protections with the specified protections.  So if you have user B<A> and B<B> set with protection permissions, and status checks B<C> and B<D> are required, and run the command with user B<E> and no status checks, B<A>, B<B>, B<C>, and B<D> will all be overwritten.
 
 =head1 OPTIONS
 
@@ -69,33 +72,23 @@ GitHub repo to protect.
 
 =item B<-o|--org>
 
-GitHub organization in which the repo is located.
+GitHub organization, or user, in which the repo is located. (Note: only org repos, not user repos, can have user and team restrictions.)
 
 =item B<-u|--user>
 
-Restrict pushing/merging to master to this user.
+Restrict pushing/merging to master to this user.  (Can specify multiple users with multiple C<-u> options.)
 
-=over 4
+=item B<-T|--team>
 
-=item * B<Replaces> existing users with user(s) supplied to the command
+Restrict pushing/merging to master to this team.  (Can specify multiple teams with multiple C<-T> options.)
 
-=item * Specify multiple -u options to specify multiple users
-
-=back
+(Note: team needs to have access in the repo's "Collaborators & teams" settings to be added here.)
 
 =item B<-s|--status_check>
 
-Disallow pushing/merging to master unless the status_check(s) are present on the commit.
+Disallow pushing/merging to master unless the specified status_check contexts are satisfied on the commit.  (Can specify multiple checks with multiple C<-s> options.  If the status check doesn't exist, it will be created.)
 
-=over 4
-
-=item * B<Replaces> existing status checks with check(s) supplied to the command
-
-=item * Specify multiple -s options to specify multiple status checks
-
-=item * If the status check doesn't exist, it will be created
-
-=back
+B<NOTE>: A check can be any string, but if you use strange (e.g., unicode/high-bit) characters, there may be unexpected results (including strings not matching, and even the UI page breaking).  We're too lazy to make it work properly with arbitrary inputs, so we convert all strings to ASCII.
 
 =item B<-v|--verbose>
 
@@ -117,18 +110,18 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
+use Encode;
 use Pod::Usage;
-
 use Marchex::Client::GitHub;
 
 my $gh = init();
 
-protect_branch();
+exit protect_branch();
 
 sub protect_branch {
     return unless $gh->{status_check};
 
-    # Set up $patch_data to enable protection
+    # enable protection
     my $patch_data = {
         protection  => {
             enabled => JSON::XS::true(),
@@ -138,7 +131,7 @@ sub protect_branch {
     # If requested, set status check enforcement
     if ($gh->{status_check}) {
         $patch_data->{required_status_checks} = {
-            # For now, make the rule apply to everyone
+            # For now, make the rule apply to everyone, and do 'strict' merges
             include_admins      => JSON::XS::true(),
             strict              => JSON::XS::true(),
             contexts            => $gh->{status_check}
@@ -148,29 +141,61 @@ sub protect_branch {
         $patch_data->{required_status_checks} = undef;
     }
 
-    # If requested, add users with push access
-    if ($gh->{user}) {
+    # If requested, add users/teams with push access
+    if ($gh->{user} || $gh->{team}) {
         $patch_data->{restrictions} = {
-            users => $gh->{user},
-            teams => []
+            users => $gh->{user} || [],
+            teams => $gh->{team} || []
         };
     }
     else {
         $patch_data->{restrictions} = undef;
     }
 
-    eval { $gh->{api}->command(
+    my $result = eval { $gh->{api}->command(
         PUT => "/repos/$gh->{org}/$gh->{repo}/branches/master/protection",
         $patch_data,
         { accept_type => 'application/vnd.github.loki-preview+json' }
     ) };
     die "Cannot set branch protection for $gh->{repo}: $@; exiting" if $@;
+    print "Successfully set up branch protection for $gh->{org}/$gh->{repo}\n";
 
-    print "Added status_check(s) " . join(", ", @{$gh->{status_check}}) , " requirements to master on $gh->{repo}.\n"
-        if $gh->{status_check};
+    # verify results
+    my $err = 0;
+    $err = 1 if check_result(
+        'status_check', $result->{required_status_checks}{contexts}
+    );
 
-    print "Granted " . join(", ", @{$gh->{user}}) , " access to push to master on $gh->{repo}.\n"
-        if $gh->{user};
+    $err = 1 if check_result(
+        'user', $result->{restrictions}{users}, 'login'
+    );
+
+    $err = 1 if check_result(
+        'team', $result->{restrictions}{teams}, 'slug'
+    );
+
+    return $err;
+}
+
+sub check_result {
+    my($key, $res, $map_key) = @_;
+
+    my $err = 0;
+    my $req = $gh->{$key};
+    if ($req) {
+        my @arr = $map_key
+            ? ( map { $_->{$map_key} } @$res )
+            : @$res;
+
+        for my $value (@{$req}) {
+            unless (grep { lc $_ eq lc $value } @arr) {
+                warn sprintf "### '%s' %s not added\n", $value, $key;
+                $err ||= 1;
+            }
+        }
+    }
+
+    return $err;
 }
 
 sub init {
@@ -178,6 +203,7 @@ sub init {
         'o|org=s'               => 'org',
         'r|repo=s'              => 'repo',
         'u|user=s@'             => 'user',
+        'T|team=s@'             => 'team',
         's|status_check=s@'     => 'status_check',
     );
 
@@ -187,8 +213,24 @@ sub init {
     pod2usage(-verbose => 1, -message => "no repo name provided\n")
         unless $gh->{repo};
 
-    pod2usage(-verbose => 1, -message => "nothing to do - please specify one or both of user or status_checks\n")
-        unless $gh->{user} || $gh->{status_check};
+    pod2usage(-verbose => 1, -message => "nothing to do - please specify a user, team, or status_check\n")
+        unless $gh->{user} || $gh->{team} || $gh->{status_check};
+
+    fix_inputs($gh);
 
     return($gh);
+}
+
+
+# convert strings to ASCII because other strings are prone to breakage
+# patches for UTF8, or something, welcome
+sub fix_inputs {
+    my($gh) = @_;
+    for my $key (qw(status_check)) {
+        if ($gh->{$key}) {
+            for my $val (@{$gh->{$key}}) {
+                $val = encode('ascii', $val);
+            }
+        }
+    }
 }
