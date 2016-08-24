@@ -82,6 +82,8 @@ Restrict pushing/merging to master to this user.  (Can specify multiple users wi
 
 Restrict pushing/merging to master to this team.  (Can specify multiple teams with multiple C<-T> options.)
 
+B<NOTE>: the specified team must first be added to the repo via the "Collaborators & teams" UI setting.
+
 (Note: team needs to have access in the repo's "Collaborators & teams" settings to be added here.)
 
 =item B<-s|--status_check>
