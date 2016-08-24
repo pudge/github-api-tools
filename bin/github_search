@@ -194,7 +194,7 @@ sub search {
         exit;
     }
     elsif ($gh->{print_url}) {
-        print $query_url . "\n";
+        print $gh->{api}->format_url($query_url) . "\n";
         exit;
     }
 
@@ -248,7 +248,7 @@ sub search {
                     $line .= "-L$l2";
                 }
             }
-            my $url = $item->{html_url} . $line;
+            my $url = $gh->{api}->format_url($item->{html_url} . $line);
             print color_str("# $url", MAGENTA), "\n"; 
         }
 
