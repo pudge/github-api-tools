@@ -30,7 +30,7 @@ This script is not a complete tool; it's more of a proof-of-concept.
 
 =item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
-You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.  Optionally, can provide user name and password.
 
 =back
 
@@ -51,6 +51,14 @@ item B<-t|--token>
 
 Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
 
+=item B<--username>
+
+Username for GitHub.  Prefer using a token instead.
+
+=item B<--password>
+
+Prompt for GitHub password.  Prefer using a token instead.
+
 =item B<-H|--host>
 
 Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use environment variable C<$GITHUB_HOST> instead.
@@ -59,7 +67,7 @@ Hostname of your GitHub Enterprise host e.g. github.example.com.  Can use enviro
 
 Set a URL for the status, so a user can go to it for more information.
 
-=item B<-u|--context>
+=item B<-c|--context>
 
 The context to set the status on.  Default is C<reviewed>.
 
