@@ -316,6 +316,11 @@ sub init {
         unless $opts{host};
 
     $opts{token} //= $ENV{GITHUB_TOKEN};
+    unless ($opts{token} || defined $opts{password} || defined $opts{create_token}) {
+        if (open my $fh, '<', "$ENV{HOME}/.github-api-tools-token") {
+            $opts{token} = <$fh>;
+        }
+    }
     pod2usage(-verbose => 1, -message => "no credentials provided\n")
         unless ($opts{token} || defined $opts{password} || defined $opts{create_token});
 

@@ -103,7 +103,7 @@ There's pagination in some API calls.  You can see it in the C<Link> header.  If
 
 Create and return an API token, using the provided string as the token's "note" in the UI, to explain what the token is for.  This note must be unique.
 
-The token will be saved in C<~/.github-api-tools-token>, and you can set it in your environment with C<export GITHUB_TOKEN=$(cat ~/.github-api-tools-token)>.
+The token will be saved in C<~/.github-api-tools-token>, and you can set it in your environment with C<export GITHUB_TOKEN=$(cat ~/.github-api-tools-token)>.  If C<GITHUB_TOKEN> is not set in your environment, github-api-tools will attempt to load the token from this file.
 
 =item B<--token_scopes>
 
@@ -172,7 +172,7 @@ if (defined $gh->{create_token}) {
     else {
         open my $fh, '>', $file or die "Cannot write to $file: $!\n";
         print $fh $output->{token};
-        say "Wrote token to $file; include in your environment with:";
+        say "Wrote token to $file; you may include in your environment with:";
         say "  export GITHUB_TOKEN=\$(cat $file)";
         say "Go to https://github.marchex.com/settings/tokens/$output->{id} to modify token";
     }
