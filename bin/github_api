@@ -162,7 +162,6 @@ if (defined $gh->{create_token}) {
 my $output = $gh->{api}->command(
     $gh->{http_method} => $gh->{api_method}, $gh->{params}, \%options
 );
-print $gh->{api}->pretty($output), "\n";
 
 if (defined $gh->{create_token}) {
     my $file = "$ENV{HOME}/.github-api-tools-token";
@@ -172,6 +171,8 @@ if (defined $gh->{create_token}) {
     else {
         open my $fh, '>', $file or die "Cannot write to $file: $!\n";
         print $fh $output->{token};
+        close $fh;
+        chmod 0600, $file;
         say "Wrote token to $file; you may include in your environment with:";
         say "  export GITHUB_TOKEN=\$(cat $file)";
         say "Go to https://github.marchex.com/settings/tokens/$output->{id} to modify token";
