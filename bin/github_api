@@ -42,7 +42,7 @@ You must use the correct version of the documentation for your GitHub version, w
 
 =item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
-You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.  Optionally, can provide user name and password.
 
 =back
 
@@ -62,6 +62,14 @@ Prints version and exits.
 =item B<-t|--token>
 
 Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
+
+=item B<--username>
+
+Username for GitHub.  Prefer using a token instead.
+
+=item B<--password>
+
+Prompt for GitHub password.  Prefer using a token instead.
 
 =item B<-H|--host>
 
@@ -91,6 +99,16 @@ Parameter data in a JSON string.  If no string provided, pass in via STDIN. Over
 
 There's pagination in some API calls.  You can see it in the C<Link> header.  If the API call returns a list and has a C<Link> header, the program will attempt to follow the links and return all the data, unless C<-F> is set.
 
+=item B<--create_token>
+
+Create and return an API token, using the provided string as the token's "note" in the UI, to explain what the token is for.  This note must be unique.
+
+The token will be saved in C<~/.github-api-tools-token>, and you can set it in your environment with C<export GITHUB_TOKEN=$(cat ~/.github-api-tools-token)>.  If C<GITHUB_TOKEN> is not set in your environment, github-api-tools will attempt to load the token from this file.
+
+=item B<--token_scopes>
+
+A comma-separated list of scopes.  By default, all known scopes are used.
+
 =item B<-v|--verbose>
 
 Outputs the HTTP request and response to STDERR (so that you can get the output and still process the content with C<jq>).  One C<-v> shows just the headers, while two shows the content as well.
@@ -112,6 +130,7 @@ BEGIN {
     use lib "$Bin/../lib/perl";
 }
 
+use JSON::XS 'encode_json';
 use Pod::Usage;
 use Marchex::Client::GitHub;
 
@@ -122,9 +141,47 @@ $options{content_type} = $gh->{content_type} if $gh->{content_type};
 $options{no_follow}    = $gh->{no_follow};
 
 binmode STDOUT, ':encoding(UTF-8)';
-print $gh->{api}->pretty(
-    $gh->{api}->command($gh->{http_method} => $gh->{api_method}, $gh->{params}, \%options)
-), "\n";
+
+if (defined $gh->{create_token}) {
+    $gh->{http_method} = 'POST';
+    $gh->{api_method}  = 'authorizations';
+
+    my $scopes = $gh->{token_scopes}
+        ? [split ',', $gh->{token_scopes}]
+        : [qw(
+            repo admin:org admin:public_key admin:repo_hook admin:org_hook gist
+            notifications user delete_repo admin:pre_receive_hook admin:gpg_key
+        )];
+
+    $gh->{params} = encode_json({
+        note    => $gh->{create_token} || 'github-api-tools token',
+        scopes  => $scopes
+    });
+}
+
+my $output = $gh->{api}->command(
+    $gh->{http_method} => $gh->{api_method}, $gh->{params}, \%options
+);
+
+if (defined $gh->{create_token}) {
+    my $file = "$ENV{HOME}/.github-api-tools-token";
+    if (-f $file) {
+        warn "Will not write to $file; already exists\n";
+    }
+    else {
+        open my $fh, '>', $file or die "Cannot write to $file: $!\n";
+        print $fh $output->{token};
+        close $fh;
+        chmod 0600, $file;
+        say "Wrote token to $file; you may include in your environment with:";
+        say "  export GITHUB_TOKEN=\$(cat $file)";
+        say "Go to https://github.marchex.com/settings/tokens/$output->{id} to modify token";
+    }
+}
+else {
+    print $gh->{api}->pretty($output), "\n";
+}
+
 exit;
 
 sub init {
@@ -136,6 +193,8 @@ sub init {
         'd|data=s@'             => 'data',
         'j|json:s'              => 'json',
         'F|no_follow'           => 'no_follow',
+        '--create_token:s'      => 'create_token',
+        '--token_scopes=s'      => 'token_scopes'
     );
 
     if (defined $gh->{json}) {
@@ -157,7 +216,7 @@ sub init {
     @ARGV = ();
 
     pod2usage(-verbose => 1, -message => "No method specified\n")
-        unless $gh->{api_method};
+        unless $gh->{api_method} or defined $gh->{create_token};
 
     return($gh);
 }

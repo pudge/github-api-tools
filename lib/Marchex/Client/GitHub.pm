@@ -78,6 +78,7 @@ our $VERSION = v0.1.0;
 use HTTP::Request;
 use JSON::XS qw(decode_json encode_json);
 use LWP;
+use MIME::Base64 'encode_base64';
 use URI::Escape 'uri_escape';
 
 use Pod::Usage;
@@ -89,13 +90,13 @@ sub new {
 
     my $self = bless \%opts, $class;
 
-    $self->{ua}       = $class->_ua();
-    $self->{token}  //= $ENV{GITHUB_TOKEN};
-    $self->{host}   //= $ENV{GITHUB_HOST};
-    $self->{user}   //= $ENV{USER};
+    $self->{token}      //= $ENV{GITHUB_TOKEN};
+    $self->{host}       //= $ENV{GITHUB_HOST};
+    $self->{username}   //= $ENV{USER};
+    $self->{ua}           = $self->_ua();
 
-    die 'Must have host and token set; please see documentation'
-        unless $self->{host} && $self->{token};
+    die 'Must have host and credentials set; please see documentation'
+        unless $self->{host} && ($self->{token} || ($self->{password} && $self->{username}));
 
     # currently only HTTPS supported
     if ($self->{host} eq 'github.com') {
@@ -117,8 +118,18 @@ sub new {
 }
 
 sub _ua {
+    my($self) = @_;
     my $ua = LWP::UserAgent->new;
     push @{ $ua->requests_redirectable }, 'PUT';
+
+    if ($self->{token}) {
+        $self->{auth} = 'token ' . uri_escape($self->{token});
+    }
+    else {
+        $self->prompt_for_credentials;
+        $self->{auth} = 'Basic ' . encode_base64($self->{username} . ':' . $self->{password});
+    }
+
     return $ua;
 }
 
@@ -172,7 +183,7 @@ sub _req {
         }
     }
 
-    $req->header(Authorization => 'token ' . uri_escape($self->{token}));
+    $req->header(Authorization => $self->{auth});
     $req->header(Accept => $options->{accept_type} || 'application/vnd.github.v3+json');
 
     $self->_debug_input($req);
@@ -246,7 +257,7 @@ sub _debug_input {
     my($self, $req) = @_;
     if ($self->{verbose}) {
         my $req_str = $self->_prep_str($req->as_string, '> ');
-        $req_str =~ s/^(> Authorization: token) .+$/$1 PRIVATE/m;
+        $req_str =~ s/^(> Authorization: \w+) .+$/$1 PRIVATE/m;
         print STDERR $req_str, "--\n";
     }
 }
@@ -287,6 +298,8 @@ sub init {
     GetOptions(
         'h|help'                => sub { pod2usage(-verbose => 2) },
         't|token=s'             => \$opts{token},
+        'username=s'            => \$opts{username},
+        'password'              => \$opts{password},
         'H|host=s'              => \$opts{host},
         'V|version'             => \$opts{version},
         'v|verbose+'            => \$opts{verbose},
@@ -303,13 +316,27 @@ sub init {
         unless $opts{host};
 
     $opts{token} //= $ENV{GITHUB_TOKEN};
-    pod2usage(-verbose => 1, -message => "no personal token provided\n")
-        unless $opts{token};
+    unless ($opts{token} || defined $opts{password} || defined $opts{create_token}) {
+        if (open my $fh, '<', "$ENV{HOME}/.github-api-tools-token") {
+            $opts{token} = <$fh>;
+        }
+    }
+    pod2usage(-verbose => 1, -message => "no credentials provided\n")
+        unless ($opts{token} || defined $opts{password} || defined $opts{create_token});
+
+    # must use password auth with creating tokens
+    if (defined $opts{create_token}) {
+        delete $opts{token};
+        delete $ENV{GITHUB_TOKEN};
+        $opts{password} = 1;
+    }
 
     $opts{api} = Marchex::Client::GitHub->new(
-        host    => $opts{host},
-        token   => $opts{token},
-        verbose => $opts{verbose}
+        host        => $opts{host},
+        token       => $opts{token},
+        username    => $opts{username},
+        password    => $opts{password},
+        verbose     => $opts{verbose}
     );
 
     return(\%opts);
@@ -319,6 +346,34 @@ sub init {
 sub format_url {
     my($self, $url) = @_;
     return $self->{tiny} ? $self->{tiny}->tinify($url) : $url;
+}
+
+sub prompt_for_credentials {
+    my($self, $opts) = @_;
+
+    $self->{username} //= '';
+
+    my $username  = prompt_for("Username [$self->{username}]");
+    $self->{username} = $username if $username;
+    $self->{password} = prompt_for("Password", 1);
+}
+
+sub prompt_for {
+    my($prompt, $is_pass) = @_;
+    local $\;
+    local $| = 1;
+
+    # Disable displaying password when it's typed
+    qx(stty -echo) if $is_pass;
+    print "$prompt: ";
+
+    chomp(my $input = <STDIN>);
+    if ($is_pass) {
+        qx(stty echo);
+        print "\n";
+    }
+
+    return $input;
 }
 
 1;

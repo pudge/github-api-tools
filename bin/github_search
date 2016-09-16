@@ -49,7 +49,7 @@ See the documentation for more information about searching code in GitHub:
 
 =item * Create personal access token on GitHub with necessary scopes for given endpoints (L<https://github.example.com/settings/tokens>).
 
-You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.
+You can save the token in the environment variable C<$GITHUB_TOKEN>, or pass it in the command line with C<-t>.  Optionally, can provide user name and password.
 
 =back
 
@@ -69,6 +69,14 @@ Prints version and exits.
 =item B<-t|--token>
 
 Personal access token to use GitHub API.  Can use environment variable C<$GITHUB_TOKEN> instead.
+
+=item B<--username>
+
+Username for GitHub.  Prefer using a token instead.
+
+=item B<--password>
+
+Prompt for GitHub password.  Prefer using a token instead.
 
 =item B<-H|--host>
 
