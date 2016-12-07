@@ -127,7 +127,8 @@ sub _ua {
     }
     else {
         $self->prompt_for_credentials;
-        $self->{auth} = 'Basic ' . encode_base64($self->{username} . ':' . $self->{password});
+        $self->{auth} = 'Basic ' . encode_base64($self->{username} . ':' . $self->{password})
+            if $self->{username} && $self->{password};
     }
 
     return $ua;
@@ -359,6 +360,7 @@ sub prompt_for_credentials {
 }
 
 sub prompt_for {
+    return unless (-t STDIN && -t STDOUT);
     my($prompt, $is_pass) = @_;
     local $\;
     local $| = 1;
