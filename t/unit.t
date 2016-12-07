@@ -47,7 +47,7 @@ sub new_empty {
     my $gh = eval { Marchex::Client::GitHub->new(host => '', token => '0') };
     my $err = $@;
     ok(!$gh, "no object returned without 'host' and 'token' set");
-    like($err, qr/Must have host and token set/i, "error returned"); 
+    like($err, qr/Must have host and credentials set/i, "error returned");
 }
 
 sub new_example {
