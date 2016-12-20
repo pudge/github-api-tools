@@ -1,7 +1,6 @@
 # github-api-tools
 
-These are command-line utilities, and a Perl library, for dealing with the GitHub API.  The tools work with both GitHub.com, and GitHub Enterprise.
-
+These are command-line utilities, and a Perl library, for dealing with the [GitHub API](https://developer.github.com/v3/).  The tools work with both GitHub.com, and GitHub Enterprise.
 * github_api - use the GitHub API
 * github_approve_pr - set status for pull request from the command line
 * github_protect_branch - set up protected branch rules on an existing repo
@@ -36,11 +35,6 @@ You may also need:
 * libwww-perl
 
 If you choose to build your own Perl modules from source, or using a CPAN tool, you will need the perl build tools for your platform.
-
-
-## CAVEATS
-
-The `github_protect_branch` tool uses a developer preview API.  See https://developer.github.com/changes/2016-06-27-protected-branches-api-update/ for more information.
 
 
 ## COPYRIGHT AND LICENSE
