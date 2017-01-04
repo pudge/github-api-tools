@@ -96,7 +96,7 @@ sub new {
     $self->{ua}           = $self->_ua();
 
     die 'Must have host and credentials set; please see documentation'
-        unless $self->{host} && ($self->{token} || ($self->{password} && $self->{username}));
+        unless $self->{host} && ($self->{auth} || $self->{token} eq '-ignore-');
 
     # currently only HTTPS supported
     if ($self->{host} eq 'github.com') {
@@ -123,7 +123,8 @@ sub _ua {
     push @{ $ua->requests_redirectable }, 'PUT';
 
     if ($self->{token}) {
-        $self->{auth} = 'token ' . uri_escape($self->{token});
+        $self->{auth} = 'token ' . uri_escape($self->{token})
+            unless $self->{token} eq '-ignore-';
     }
     else {
         $self->prompt_for_credentials;
@@ -317,13 +318,21 @@ sub init {
         unless $opts{host};
 
     $opts{token} //= $ENV{GITHUB_TOKEN};
-    unless ($opts{token} || defined $opts{password} || defined $opts{create_token}) {
-        if (open my $fh, '<', "$ENV{HOME}/.github-api-tools-token") {
-            $opts{token} = <$fh>;
-        }
+
+    # special-case for the few calls that don't require auth
+    if (defined $opts{open_url} || $opts{print_url}) {
+        $opts{token}        = '-ignore-' unless length $opts{token};
+        $ENV{GITHUB_TOKEN}  = '-ignore-' unless length $ENV{GITHUB_TOKEN};
     }
-    pod2usage(-verbose => 1, -message => "no credentials provided\n")
-        unless ($opts{token} || defined $opts{password} || defined $opts{create_token});
+    else {
+        unless ($opts{token} || defined $opts{password} || defined $opts{create_token}) {
+            if (open my $fh, '<', "$ENV{HOME}/.github-api-tools-token") {
+                $opts{token} = <$fh>;
+            }
+        }
+        pod2usage(-verbose => 1, -message => "no credentials provided\n")
+            unless ($opts{token} || defined $opts{password} || defined $opts{create_token});
+    }
 
     # must use password auth with creating tokens
     if (defined $opts{create_token}) {
