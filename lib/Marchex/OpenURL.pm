@@ -4,7 +4,7 @@ package Marchex::OpenURL;
 
 =head1 NAME
 
-Marchex::OpenURL - Simple helper for printing ANSI colors
+Marchex::OpenURL - Simple helper for opening URLs in browsers
 
 =head1 SYNOPSIS
 
@@ -21,7 +21,7 @@ If the environment variables C<OPEN_URL_REMOTE_CMD> or C<BROWSER> are set, will 
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2016, Marchex.
+Copyright 2017, Marchex.
 
 This library is free software; you may redistribute it and/or modify it under the same terms as Perl itself.
 
@@ -52,13 +52,11 @@ sub open_url {
                 # quote the $url, else '&' characters will still be unhappy
                 # on the remote from the ssh cmd
                 _open_url($SSH, $host, $cmd_remote, quotemeta($url));
-                exit(0);
             }
         }
     }
 
     _open_url($cmd, $url);
-    exit(0);
 }
 
 sub open_url_with {
@@ -69,7 +67,17 @@ sub open_url_with {
 
 sub _open_url {
     my(@args) = @_;
-    system(@args);
+
+    my $args = join ' ', @args;
+    my $ret = system(@args);
+    die "system '$args' failed: $ret : $?" if $ret != 0;
+    if ($? == -1) {
+        die "failed to execute: $!";
+    }
+    elsif ($? & 127) {
+        die sprintf "child died with signal %d, %s coredump",
+            ($? & 127),  ($? & 128) ? 'with' : 'without';
+    }
 }
 
 1;
