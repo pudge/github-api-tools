@@ -38,9 +38,13 @@ our $SSH = 'ssh';
 sub open_url {
     my($url) = @_;
 
-    my $cmd = $ENV{OPEN_URL_CMD} // $ENV{BROWSER} // (
-        $^O eq 'darwin' ? 'open' : 'xdg-open' # modern Linux default
-    );
+    my $cmd = $ENV{OPEN_URL_CMD} //
+        defined $ENV{BROWSER} && $ENV{BROWSER} !~ /\bopen_url$/
+            ? $ENV{BROWSER}
+            : $^O eq 'darwin'
+                ? 'open'
+                : 'xdg-open'; # modern Linux default
+
     my $cmd_remote  = $ENV{OPEN_URL_REMOTE_CMD} // 'open'; # Mac OS
     my $ssh_allowed = $ENV{OPEN_URL_SSH}; # boolean, no need to use for X11
 
@@ -52,6 +56,7 @@ sub open_url {
                 # quote the $url, else '&' characters will still be unhappy
                 # on the remote from the ssh cmd
                 _open_url($SSH, $host, $cmd_remote, quotemeta($url));
+                return;
             }
         }
     }
