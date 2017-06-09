@@ -283,7 +283,7 @@ sub _prep_str {
 sub pretty {
     my($self, $content) = @_;
     my $content_str = ref $content ? $content : eval { decode_json($content) } // $content;
-    return eval { JSON::XS->new->pretty(1)->encode( $content_str ) } // $content_str;
+    return eval { JSON::XS->new->pretty(1)->canonical(1)->encode( $content_str ) } // $content_str;
 }
 
 # for initializing a new tool
